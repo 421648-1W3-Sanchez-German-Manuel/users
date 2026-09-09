@@ -7335,6 +7335,13 @@ DEC-09: resultado y cursoId se usan y se descartan. El dueno es Cursos."
 
 **Interfaces:**
 - Consumes: `UserRepository` (T2), `PasswordEncoder` (T5), `AccountEventPublisher` (T6), `NotificationEventPublisher` (T7), `PasswordPolicy` (T12).
+
+> **`AccountEventPublisher` y `NotificationEventPublisher` son del lote L3.** Si
+> todavia no estan en `main` cuando llegues acá, **no borres las llamadas en
+> silencio**: sin ellas RF-USR-01 se instala sin rastro de auditoria y las tres
+> vias de alerta de `DEC-32` quedan en una sola, y nada lo avisa. Dejá el test
+> escrito con `@Disabled("espera L3 · T6/T7")` y una linea en tu PR diciendo
+> que falta. Un requisito que desaparece sin dejar marca no se recupera nunca.
 - Produces: nada — las dos son herramientas de arranque y de emergencia.
 
 > **Los dos caminos por los que puede existir un ADMIN, y por qué hacen falta
@@ -7462,20 +7469,18 @@ public class AdminBootstrap implements ApplicationRunner {
         String clara = generada ? generar() : password;
         PasswordPolicy.validate(clara);   // una password floja falla al arrancar, no despues
 
+        // 🔴 El evento va DENTRO de la misma transaccion que la fila: eso ES el
+        // outbox (DEC-45b). `publicar` esta anotado con propagation MANDATORY,
+        // asi que llamarlo afuera falla siempre y el alta de ADMIN queda sin
+        // rastro de auditoria — con un try/catch que lo tapa, que es peor.
         UUID id = tx.execute(s -> {
             User admin = User.createAdmin(firstNames, lastNames, email.toLowerCase(),
                     encoder.encode(clara), tycVigente);   // deja mustChangePassword = true
-            return repo.saveAndFlush(admin).getId();
-        });
-
-        // Auditing cannot prevent the ADMIN from existing: if Kafka is
-        // caido, se loguea y se sigue.
-        try {
+            UUID nuevoId = repo.saveAndFlush(admin).getId();
             eventos.publicar(topics.audit(), "ADMIN_INICIAL_CREADO",
-                    Map.of("adminId", String.valueOf(id)));
-        } catch (Exception e) {
-            log.warn("ADMIN_BOOTSTRAP: el evento de auditoria fallo — el ADMIN SI se creo", e);
-        }
+                    Map.of("adminId", String.valueOf(nuevoId)));
+            return nuevoId;
+        });
 
         if (generada) log.warn("""
 
