@@ -1,0 +1,112 @@
+spring:
+  application:
+    name: users-service
+  datasource:
+    # DEC-20 rule 2: UTC explicit on the connection - never rely on the host's timezone
+    url: ${DB_URL:jdbc:mysql://localhost:3306/users?connectionTimeZone=UTC&preserveInstants=true}
+    username: ${DB_USER:root}
+    password: ${DB_PASSWORD:}
+  jpa:
+    hibernate:
+      ddl-auto: validate        # Flyway is in charge; Hibernate only verifies
+    open-in-view: false
+    properties:
+      hibernate.jdbc.time_zone: UTC
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+  kafka:
+    bootstrap-servers: ${KAFKA_SERVERS:localhost:9092}
+    consumer:
+      group-id: users-service
+      auto-offset-reset: earliest
+      properties:
+        spring.json.trusted.packages: "*"
+        # DEC-34: if another team adds fields, we do not break
+        spring.json.fail.on.unknown.properties: false
+  mvc:
+    # A route that does not exist has to reach the @RestControllerAdvice as an
+    # exception and come out as a 404 route-not-found in problem+json. Without
+    # these two, Spring answers its own body with no `type` and the client
+    # cannot branch on it.
+    throw-exception-if-no-handler-found: true
+  web:
+    resources:
+      add-mappings: false
+
+server:
+  port: ${SERVER_PORT:8082}     # DEC-28
+
+management:
+  server:
+    port: ${MANAGEMENT_PORT:8083}   # DEC-28
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus
+  endpoint:
+    health:
+      probes:
+        enabled: true
+      show-details: never
+
+eureka:
+  client:
+    service-url:
+      defaultZone: ${EUREKA_URL:http://localhost:8761/eureka/}
+    register-with-eureka: true
+    fetch-registry: false        # ONLY the gateway has true
+  instance:
+    prefer-ip-address: true
+
+# ---------------------------------------------------------------------------
+# Every lot adds its own block below. This file has ONE owner (see
+# docs/TASK-ASSIGNMENT.md): send the block instead of committing it, or six
+# branches collide in the same place.
+#
+#   users.jwt          -> L2  (keys, issuer, token TTLs)
+#   users.otp          -> L3  (OTP and activation TTLs)
+#   users.kafka.topics -> L3  (the topic catalogue)
+#   users.ratelimit    -> L1  (login failures per e-mail, DEC-42)
+#   users.bootstrap    -> L6  (the initial ADMIN, RF-USR-01)
+#   users.legal        -> L5  (the current T&C version)
+# ---------------------------------------------------------------------------
+
+users:
+  legal:
+    terms-version: "v1"          # DEC-31
+  jwt:
+    issuer: users-service        # DEC-07
+    access-ttl: PT10M
+    refresh-ttl: P7D
+    service-ttl: PT5M
+    private-key-path: ${JWT_PRIVATE_KEY_PATH:./secrets/jwt-private.pem}   # DEC-18
+    public-keys-dir: ${JWT_PUBLIC_KEYS_DIR:./secrets/jwks}
+    active-kid: ${JWT_ACTIVE_KID:dev}
+  otp:
+    activation-ttl: PT30M        # DEC-33
+    two-factor-ttl: PT5M
+    max-attempts: 5
+  ratelimit:
+    login-max-failures: 5        # DEC-42
+    login-window: PT15M
+  kafka:
+    # DEC-34: a topic name is configuration, never a constant.
+    #
+    # The KEYS are ours and go in English like the rest of the code. The VALUES
+    # do not: `tema-NN-<subsystem>.<event>.vN` is the convention agreed across
+    # the ten subsystems of the platform, and two of these four topics belong to
+    # other teams. Renaming them on this side breaks whoever consumes them.
+    topics:
+      audit:              ${TOPIC_AUDIT:tema-01-users.auditoria.v1}
+      student-registered: ${TOPIC_STUDENT_REGISTERED:tema-01-users.alumno-registrado.v1}
+      notifications:      ${TOPIC_NOTIFICATIONS:tema-XX-notificaciones.email.v1}
+      course-validation:  ${TOPIC_COURSE_VALIDATION:tema-02-cursos.validacion-resuelta.v1}
+
+logging:
+  pattern:
+    level: "%5p [${spring.application.name},%X{traceId:-},%X{requestId:-}]"

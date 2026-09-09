@@ -7497,18 +7497,22 @@ public class AdminBootstrap implements ApplicationRunner {
 }
 ```
 
-Properties en `application.yml`:
+Properties en `application.yml`. **Este archivo tiene UN solo dueño** (ver
+`docs/TASK-ASSIGNMENT.md`): no lo commitees. Pasá el bloque y se aplica a `main`
+antes de que abras el PR, así tus tests pasan también para el resto y no chocás
+con otra rama en el mismo lugar.
 
 ```yaml
 users:
-  # RF-USR-01 · ADMIN inicial de una instalacion limpia. Idempotente: solo se
-  # crea si no hay ningun ADMIN activo.
+  # RF-USR-01 - ADMIN inicial de una instalacion limpia. Idempotente: solo se
+  # crea si no hay ningun ADMIN activo. Sin ADMIN_BOOTSTRAP_PASSWORD se genera
+  # una y se imprime UNA sola vez en el log del arranque.
   bootstrap:
-    enabled: ${ADMIN_BOOTSTRAP_ENABLED:true}
-    email: ${ADMIN_BOOTSTRAP_EMAIL:admin@frc.utn.edu.ar}
-    password: ${ADMIN_BOOTSTRAP_PASSWORD:}
-    firstNames: ${ADMIN_BOOTSTRAP_NOMBRES:Admin}
-    lastNames: ${ADMIN_BOOTSTRAP_APELLIDOS:Inicial}
+    enabled:     ${ADMIN_BOOTSTRAP_ENABLED:true}
+    email:       ${ADMIN_BOOTSTRAP_EMAIL:admin@frc.utn.edu.ar}
+    password:    ${ADMIN_BOOTSTRAP_PASSWORD:}
+    first-names: ${ADMIN_BOOTSTRAP_FIRST_NAMES:Admin}
+    last-names:  ${ADMIN_BOOTSTRAP_LAST_NAMES:Inicial}
 ```
 
 Y **apagado en los tests** (`src/test/resources/application-test.yml`), o el
