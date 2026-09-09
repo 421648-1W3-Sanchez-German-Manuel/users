@@ -4,6 +4,7 @@ import ar.edu.utn.frc.tup.p4.usersservice.AbstractIntegrationTest;
 import ar.edu.utn.frc.tup.p4.usersservice.auth.cli.AdminRecoveryCommand;
 import ar.edu.utn.frc.tup.p4.usersservice.users.enums.Role;
 import ar.edu.utn.frc.tup.p4.usersservice.users.repositories.UserRepository;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
@@ -54,5 +55,23 @@ class AdminRecoveryCommandTest extends AbstractIntegrationTest {
                 "x-" + java.util.UUID.randomUUID() + "@utn.edu.ar", "passwordvalida1"))
                 .isInstanceOf(SecurityException.class)
                 .hasMessageNotContaining("secreto-filtrable");
+    }
+
+    @Test
+    @Disabled("espera L3 · T6 AccountEventPublisher / T7 NotificationEventPublisher")
+    void el_breakglass_deja_RECUPERACION_ADMIN_en_el_outbox() {
+        // TODO: cuando L3 provea AccountEventPublisher, verificar que
+        // AdminRecoveryCommand escribe un OutboxEvent con topic "auditoria"
+        // y payload conteniendo "RECUPERACION_ADMIN" DENTRO de tx.execute.
+        // OutboxRepository es de L1 y ya existe.
+    }
+
+    @Test
+    @Disabled("espera L3 · T6 AccountEventPublisher / T7 NotificationEventPublisher")
+    void el_breakglass_manda_mail_a_todos_los_ADMIN_activos() {
+        // TODO: cuando L3 provea NotificationEventPublisher, verificar que
+        // AdminRecoveryCommand llama a mails.enviar(EmailType.ALERTA_BREAKGLASS, ...)
+        // para cada ADMIN activo distinto del recién creado.
+        // EmailType y NotificationEventPublisher son de L3.
     }
 }

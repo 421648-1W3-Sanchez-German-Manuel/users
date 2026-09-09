@@ -5,6 +5,7 @@ import ar.edu.utn.frc.tup.p4.usersservice.users.entities.User;
 import ar.edu.utn.frc.tup.p4.usersservice.users.enums.Role;
 import ar.edu.utn.frc.tup.p4.usersservice.users.repositories.UserRepository;
 import ar.edu.utn.frc.tup.p4.usersservice.users.cli.AdminBootstrap;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -69,5 +70,14 @@ class AdminBootstrapTest {
         bootstrap("").run(null);
 
         verify(repo).saveAndFlush(any());
+    }
+
+    @Test
+    @Disabled("espera L3 · T6 AccountEventPublisher / T7 NotificationEventPublisher")
+    void el_alta_del_ADMIN_inicial_deja_ADMIN_INICIAL_CREADO_en_el_outbox() {
+        // TODO: cuando L3 provea AccountEventPublisher, verificar que
+        // AdminBootstrap escribe un OutboxEvent con topic "auditoria"
+        // y payload conteniendo "ADMIN_INICIAL_CREADO" DENTRO de tx.execute.
+        // OutboxRepository es de L1 y ya existe.
     }
 }
