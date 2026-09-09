@@ -3919,12 +3919,12 @@ class PasswordPolicyTest {
     void twelve_characters_are_enough_with_no_composition_rules() {
         // NIST SP 800-63B: largo, no complejidad. "Password1!" son 10
         // caracteres predecibles; 12 libres tienen mas entropia real.
-        assertThatCode(() -> PasswordPolicy.validar("todaminusculas")).doesNotThrowAnyException();
+        assertThatCode(() -> PasswordPolicy.validate("todaminusculas")).doesNotThrowAnyException();
     }
 
     @Test
     void fewer_than_twelve_characters_is_rejected() {
-        assertThatThrownBy(() -> PasswordPolicy.validar("corta123")).isInstanceOf(ApiException.class);
+        assertThatThrownBy(() -> PasswordPolicy.validate("corta123")).isInstanceOf(ApiException.class);
     }
 
     @Test
@@ -3932,7 +3932,7 @@ class PasswordPolicyTest {
         // BCrypt silently TRUNCATES at 72 bytes: without this limit, a
         // 100-character password is checked against its first 72 and the
         // user believes they have a strength they do not have.
-        assertThatThrownBy(() -> PasswordPolicy.validar("a".repeat(73)))
+        assertThatThrownBy(() -> PasswordPolicy.validate("a".repeat(73)))
                 .isInstanceOf(ApiException.class);
     }
 
@@ -3941,13 +3941,13 @@ class PasswordPolicyTest {
         // 40 caracteres acentuados = 80 bytes en UTF-8. Contando caracteres
         // esto pasaria, y BCrypt cortaria a mitad de un caracter.
         String cuarentaAcentos = "á".repeat(40);
-        assertThatThrownBy(() -> PasswordPolicy.validar(cuarentaAcentos))
+        assertThatThrownBy(() -> PasswordPolicy.validate(cuarentaAcentos))
                 .isInstanceOf(ApiException.class);
     }
 
     @Test
     void a_common_password_is_rejected_even_when_long_enough() {
-        assertThatThrownBy(() -> PasswordPolicy.validar("password12")).isInstanceOf(ApiException.class);
+        assertThatThrownBy(() -> PasswordPolicy.validate("password12")).isInstanceOf(ApiException.class);
     }
 }
 ```
@@ -4172,7 +4172,7 @@ public class CredentialServiceImpl implements CredentialService {
     @Override
     @Transactional
     public void updatePassword(UUID userId, String newPlainPassword) {
-        PasswordPolicy.validar(newPlainPassword);
+        PasswordPolicy.validate(newPlainPassword);
         User u = repo.findByIdAndDeletedAtIsNull(userId).orElseThrow(ApiException::invalidCredentials);
         u.changePassword(encoder.encode(newPlainPassword));
         repo.save(u);
@@ -5949,7 +5949,7 @@ public class RegistrationService {
             throw ApiException.validation(
                     "Hay que aceptar los Terminos y Condiciones vigentes (version " + tycVigente + ").");
         }
-        PasswordPolicy.validar(password);
+        PasswordPolicy.validate(password);
 
         String normalizado = email.toLowerCase(Locale.ROOT);
         if (repo.findByEmailAndDeletedAtIsNull(normalizado).isPresent()) {
@@ -6716,7 +6716,7 @@ public void changeRole(UUID actorId, UUID objetivoId, Role nuevo) {
 
 @Transactional
 public UUID crear(String firstNames, String lastNames, String email, String password, Role role) {
-    PasswordPolicy.validar(password);
+    PasswordPolicy.validate(password);
     String normalizado = email.toLowerCase(Locale.ROOT);
     if (repo.findByEmailAndDeletedAtIsNull(normalizado).isPresent()) throw ApiException.duplicateEmail();
 
@@ -7460,7 +7460,7 @@ public class AdminBootstrap implements ApplicationRunner {
         // repository is the same one in every installation.
         boolean generada = password.isBlank();
         String clara = generada ? generar() : password;
-        PasswordPolicy.validar(clara);   // una password floja falla al arrancar, no despues
+        PasswordPolicy.validate(clara);   // una password floja falla al arrancar, no despues
 
         UUID id = tx.execute(s -> {
             User admin = User.createAdmin(firstNames, lastNames, email.toLowerCase(),
@@ -7654,7 +7654,7 @@ public class AdminRecoveryCommand {
             // The message does NOT include what was received: not even an attempt leaks.
             throw new SecurityException("Secreto de instalacion invalido.");
         }
-        PasswordPolicy.validar(password);
+        PasswordPolicy.validate(password);
 
         // The creation goes in its own transaction, and the alerts OUTSIDE it.
         UUID id = tx.execute(status -> {
