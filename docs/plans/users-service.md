@@ -4296,6 +4296,7 @@ import ar.edu.utn.frc.tup.p4.usersservice.users.repositories.UserRepository;
 import com.nimbusds.jwt.SignedJWT;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Import;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -4305,6 +4306,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  * Criterios de DoD #3 (login completo, de punta a punta) y #4 (segundo
  * login sobrescribe la sesion).
  */
+@Import(TestOtpSpy.Config.class)   // el spy del Step 5, solo para este test
 class LoginIT extends AbstractIntegrationTest {
 
     @Autowired AuthService auth;
@@ -4609,14 +4611,21 @@ public class TestOtpSpy implements SecondFactorProvider {
      * would capture codes from one nobody uses.
      */
     @TestConfiguration
-    static class Config {
+    public static class Config {
         @Bean @Primary
         TestOtpSpy spy(EmailOtpProvider real) { return new TestOtpSpy(real); }
     }
 }
 ```
 
-Importar `TestOtpSpy.Config` con `@Import(TestOtpSpy.Config.class)` en `AbstractIntegrationTest`, para que lo vean también los tests de `users/` (`RegistrationIT`, `ActivationCodeIT`), que lo importan desde `ar.edu.utn.frc.tup.p4.usersservice.auth.TestOtpSpy`.
+El `@Import` va en **cada test que usa el spy**, con
+`@Import(TestOtpSpy.Config.class)` sobre la clase — acá, `LoginIT`.
+
+**No lo pongas en `AbstractIntegrationTest`.** Esa clase es de la base y no
+registra ningún doble de test a propósito: si cada lote agrega el suyo ahí,
+seis ramas editan el mismo archivo en el mismo lugar. Además los tres spies
+(`TestOtpSpy`, `TestResetSpy`, `TestActivationSpy`) declaran un `@Primary` cada
+uno; registrados todos juntos en la base, dos compiten por el mismo tipo.
 
 - [ ] **Step 6: Escribir `AuthService`**
 
@@ -5094,12 +5103,14 @@ import ar.edu.utn.frc.tup.p4.usersservice.users.repositories.UserRepository;
 import ar.edu.utn.frc.tup.p4.usersservice.users.services.CredentialService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Import;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /** DEC-16 - two endpoints, not one. `flujos` §06 drew them as the same POST. */
+@Import(TestResetSpy.Config.class)   // el spy del Step 4, solo para este test
 class PasswordResetIT extends AbstractIntegrationTest {
 
     @Autowired PasswordService passwords;
@@ -5108,6 +5119,7 @@ class PasswordResetIT extends AbstractIntegrationTest {
     @Autowired PasswordEncoder encoder;
     @Autowired TokenStore store;
     @Autowired TestResetSpy spy;      // captura el token, igual que TestOtpSpy
+                                      // (solo RESET_PASSWORD: ver Step 4)
 
     private User crear(String email) {
         User u = User.create("Ana", "P", email, encoder.encode("passwordvalida1"), Role.STUDENT, "v1");
@@ -5296,7 +5308,16 @@ public record PasswordChangeRequest(@NotBlank String currentPassword,
                                     @NotBlank String newPassword) { }
 ```
 
-Crear `TestResetSpy` análogo a `TestOtpSpy`, decorando `NotificationEventPublisher` para capturar el token del enlace.
+Crear `src/test/java/…/auth/TestResetSpy.java`, análogo a `TestOtpSpy`,
+decorando `NotificationEventPublisher` para capturar el token del enlace.
+
+**Captura solo `EmailType.RESET_PASSWORD`.** El token de activación viaja por
+el mismo mecanismo, pero es de otro lote: U17 tiene su propio
+`TestActivationSpy` y este spy no se ramifica para servirlo. Veinte líneas
+repetidas cuestan menos que un archivo que dos personas editan en paralelo.
+
+`Config` va `public static`, y el `@Import(TestResetSpy.Config.class)` sobre
+`PasswordResetIT` — no sobre `AbstractIntegrationTest`, por lo mismo que en T13.
 
 - [ ] **Step 5: Correr y verificar que pasa**
 
@@ -5652,6 +5673,7 @@ El catalogo emitible queda en un solo scope: users.profile.read."
 - Create: `src/main/java/…/users/controllers/LegalController.java`
 - Test: `src/test/java/…/users/RegistrationIT.java`
 - Test: `src/test/java/…/users/ActivationLinkIT.java`
+- Create: `src/test/java/…/users/TestActivationSpy.java`
 
 **Interfaces:**
 - Consumes: `UserRepository` (T2), `EmailWhitelistRepository` (T3), `OtpService`+`EphemeralTokenService` (T11), `NotificationEventPublisher` (T7), `AccountEventPublisher`+`KafkaTopicsProperties` (T6), `PasswordPolicy` (T12).
@@ -5713,30 +5735,64 @@ public class LegalController {
 }
 ```
 
-- [ ] **Step 2: Extender el spy de mails para capturar el enlace de activación**
+- [ ] **Step 2: Escribir tu propio spy de mails**
 
-El enlace no se puede leer del mail: no hay servidor de correo. `TestResetSpy`
-(T15) ya intercepta el publisher para quedarse con el token del reset; el de
-activación es el mismo mecanismo, así que va en el mismo spy y no en uno nuevo.
+El enlace no se puede leer del mail: no hay servidor de correo. Se intercepta el
+publisher y se saca el token del `enlace` que se le pasó a la plantilla.
 
-En `src/test/java/…/auth/TestResetSpy.java`, agregar el segundo campo y la rama:
+`TestResetSpy` (T15) hace lo mismo con el token del reset, y **no lo vas a
+extender ni tocar: es de otro lote.** Un spy compartido sería un archivo que dos
+personas editan en paralelo, que es justo lo que el reparto por propiedad de
+archivos evita. Escribís el tuyo, en tu paquete.
+
+Crear `src/test/java/…/users/TestActivationSpy.java`:
 
 ```java
+package ar.edu.utn.frc.tup.p4.usersservice.users;
+
+import ar.edu.utn.frc.tup.p4.usersservice.shared.notifications.EmailType;
+import ar.edu.utn.frc.tup.p4.usersservice.shared.notifications.NotificationEventPublisher;
+import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.boot.test.context.TestConfiguration;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Primary;
+import org.springframework.transaction.annotation.Propagation;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.util.Map;
+
+/**
+ * Captura el token del enlace de activacion.
+ *
+ * Los tres spies declaran un @Primary (NotificationEventPublisher o
+ * SecondFactorProvider), asi que NINGUN test puede importar dos Config a la
+ * vez. No hace falta: ningun flujo necesita capturar el token de reset y el de
+ * activacion en el mismo test.
+ */
+public class TestActivationSpy extends NotificationEventPublisher {
+
+    private final NotificationEventPublisher real;
     private volatile String ultimoTokenActivacion;
+
+    // El constructor del padre no se usa: toda la logica la delega en real.
+    public TestActivationSpy(NotificationEventPublisher real) {
+        super(null, null, null);
+        this.real = real;
+    }
 
     @Override
     @Transactional(propagation = Propagation.MANDATORY)
     public void enviar(EmailType tipo, String to, Map<String, Object> vars) {
         real.enviar(tipo, to, vars);
-        if (tipo == EmailType.RESET_PASSWORD) {
-            this.ultimoToken = tokenDe(vars);
-        } else if (tipo == EmailType.ACCOUNT_ACTIVATION) {
-            // RF-USR-04: activation also travels by link, so the same spy
-            // serves both long-token flows.
+        if (tipo == EmailType.ACCOUNT_ACTIVATION) {
             this.ultimoTokenActivacion = tokenDe(vars);
         }
     }
 
+    /**
+     * El enlace se arma al renderizar y apunta al FRONTEND, no a la API
+     * (RF-USR-06): de ahi se saca el query param, no del cuerpo del mail.
+     */
     private static String tokenDe(Map<String, Object> vars) {
         String enlace = (String) vars.get("enlace");
         if (enlace == null) return null;
@@ -5745,7 +5801,24 @@ En `src/test/java/…/auth/TestResetSpy.java`, agregar el segundo campo y la ram
     }
 
     public String ultimoTokenActivacion() { return ultimoTokenActivacion; }
+
+    @TestConfiguration
+    public static class Config {
+        @Bean @Primary
+        TestActivationSpy activationSpy(
+                @Qualifier("notificationEventPublisher") NotificationEventPublisher real) {
+            return new TestActivationSpy(real);
+        }
+    }
+}
 ```
+
+El `@Qualifier` no es decorativo: sin él Spring resuelve la dependencia al
+`@Primary`, que es este mismo bean, y arranca con una referencia circular.
+
+El `@Import(TestActivationSpy.Config.class)` va sobre `RegistrationIT` y sobre
+`ActivationLinkIT`, **no** sobre `AbstractIntegrationTest`: esa clase es de la
+base y no registra dobles de test.
 
 - [ ] **Step 3: Escribir el test de activación (falla)** — criterio de DoD #26
 
@@ -5753,13 +5826,13 @@ En `src/test/java/…/auth/TestResetSpy.java`, agregar el segundo campo y la ram
 package ar.edu.utn.frc.tup.p4.usersservice.users;
 
 import ar.edu.utn.frc.tup.p4.usersservice.AbstractIntegrationTest;
-import ar.edu.utn.frc.tup.p4.usersservice.auth.TestResetSpy;
 import ar.edu.utn.frc.tup.p4.usersservice.shared.web.ApiException;
 import ar.edu.utn.frc.tup.p4.usersservice.users.enums.AccountStatus;
 import ar.edu.utn.frc.tup.p4.usersservice.users.repositories.UserRepository;
 import ar.edu.utn.frc.tup.p4.usersservice.users.services.RegistrationService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Import;
 import org.springframework.data.redis.core.StringRedisTemplate;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -5769,11 +5842,12 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  * RF-USR-04 - step 2: proving possession of the e-mail is a single-use LINK,
  * single use. This IT covers release criterion #26.
  */
+@Import(TestActivationSpy.Config.class)
 class ActivationLinkIT extends AbstractIntegrationTest {
 
     @Autowired RegistrationService registro;
     @Autowired UserRepository repo;
-    @Autowired TestResetSpy mailSpy;
+    @Autowired TestActivationSpy mailSpy;
     @Autowired StringRedisTemplate redis;
 
     private void altaAlumno(String email) {
@@ -7921,7 +7995,7 @@ Abrir `spec/SPEC-users-service.md` §19 y confirmar que cada criterio tiene su t
 | 21 | `TimestampIT` |
 | 22 | `EmailReuseIT` |
 | 23, 25 | `SingleSessionRefreshIT` |
-| 26 | `ActivationCodeIT`, `OtpServiceIT` |
+| 26 | `ActivationLinkIT`, `OtpServiceIT` |
 | 27 | `OnboardingWithoutAvatarIT` |
 | 28 | `WhitelistRequestIT` |
 | 29 | `AdminRecoveryCommandTest` |
