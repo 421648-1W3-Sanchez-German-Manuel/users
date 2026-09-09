@@ -9,7 +9,10 @@ import org.junit.jupiter.api.io.TempDir;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.security.KeyPair;
+import java.security.KeyPairGenerator;
 import java.time.Duration;
+import java.util.Base64;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -22,22 +25,48 @@ class SigningKeyProviderTest {
     static Path privateKey;
     static Path jwksDir;
 
+    /**
+     * Las claves se generan con la JDK, NO invocando `openssl`.
+     *
+     * Con ProcessBuilder esto fallaba con "CreateProcess error=2" en cualquier
+     * Windows sin openssl en el PATH — y openssl no esta en el PATH de Windows
+     * por defecto, viene con Git pero en su propio bin. Un test unitario que
+     * depende de un binario externo no prueba el codigo, prueba la maquina.
+     *
+     * El formato es el mismo que escribe openssl y el mismo que espera
+     * `JWK.parseFromPEMEncodedObjects`: getEncoded() de una clave privada da
+     * PKCS#8 y de una publica da SPKI, que son exactamente los dos PEM
+     * estandar.
+     */
     @BeforeAll
-    static void generateKeys() throws IOException, InterruptedException {
+    static void generateKeys() throws Exception {
         privateKey = dir.resolve("jwt-private.pem");
         jwksDir = Files.createDirectories(dir.resolve("jwks"));
-        run("openssl", "genpkey", "-algorithm", "RSA",
-                "-pkeyopt", "rsa_keygen_bits:2048", "-out", privateKey.toString());
-        run("openssl", "rsa", "-in", privateKey.toString(), "-pubout",
-                "-out", jwksDir.resolve("2026-09.pem").toString());
-        run("openssl", "genpkey", "-algorithm", "RSA",
-                "-pkeyopt", "rsa_keygen_bits:2048", "-out", dir.resolve("old.pem").toString());
-        run("openssl", "rsa", "-in", dir.resolve("old.pem").toString(), "-pubout",
-                "-out", jwksDir.resolve("2026-03.pem").toString());
+
+        KeyPair active = rsa();
+        writePem(privateKey, "PRIVATE KEY", active.getPrivate().getEncoded());
+        writePem(jwksDir.resolve("2026-09.pem"), "PUBLIC KEY", active.getPublic().getEncoded());
+
+        // Una segunda clave, solo publica: es la que ya no firma pero sigue
+        // publicada en el JWKS para que los tokens en vuelo sigan validando
+        // durante una rotacion (DEC-18).
+        KeyPair rotated = rsa();
+        writePem(dir.resolve("old.pem"), "PRIVATE KEY", rotated.getPrivate().getEncoded());
+        writePem(jwksDir.resolve("2026-03.pem"), "PUBLIC KEY", rotated.getPublic().getEncoded());
     }
 
-    private static void run(String... command) throws IOException, InterruptedException {
-        assertThat(new ProcessBuilder(command).inheritIO().start().waitFor()).isZero();
+    private static KeyPair rsa() throws Exception {
+        KeyPairGenerator generator = KeyPairGenerator.getInstance("RSA");
+        generator.initialize(2048);
+        return generator.generateKeyPair();
+    }
+
+    private static void writePem(Path path, String label, byte[] der) throws IOException {
+        String body = Base64.getMimeEncoder(64, System.lineSeparator().getBytes())
+                .encodeToString(der);
+        Files.writeString(path, "-----BEGIN " + label + "-----" + System.lineSeparator()
+                + body + System.lineSeparator()
+                + "-----END " + label + "-----" + System.lineSeparator());
     }
 
     private JwtProperties properties(String privateKeyPath, String kid) {
