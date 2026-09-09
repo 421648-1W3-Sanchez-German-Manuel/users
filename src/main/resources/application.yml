@@ -73,10 +73,31 @@ eureka:
 #   users.kafka.topics -> L3  (the topic catalogue)
 #   users.ratelimit    -> L1  (login failures per e-mail, DEC-42)
 #   users.bootstrap    -> L6  (the initial ADMIN, RF-USR-01)
+#   users.breakglass   -> L6  (the recovery secret hash, RF-ROL-04)
 #   users.legal        -> L5  (the current T&C version)
 # ---------------------------------------------------------------------------
 
 users:
+  # RF-USR-01 - the initial ADMIN of a clean install. Idempotent: it is only
+  # created when there is no active ADMIN. With no ADMIN_BOOTSTRAP_PASSWORD one
+  # is generated and printed exactly once in the startup log.
+  bootstrap:
+    enabled:     ${ADMIN_BOOTSTRAP_ENABLED:true}
+    email:       ${ADMIN_BOOTSTRAP_EMAIL:admin@frc.utn.edu.ar}
+    password:    ${ADMIN_BOOTSTRAP_PASSWORD:}
+    first-names: ${ADMIN_BOOTSTRAP_FIRST_NAMES:Admin}
+    last-names:  ${ADMIN_BOOTSTRAP_LAST_NAMES:Inicial}
+  # RF-ROL-04 - break-glass. The BCrypt hash of the installation secret, never
+  # the secret itself: it is validated with matches(), so the plaintext is never
+  # versioned and never has to exist on this machine.
+  #
+  # Generate it with cost 12, the project standard (DEC-38). The plan's test
+  # fixture uses a cost-4 hash on purpose - it is a test, and cost 12 would add
+  # ~100 ms per assertion. A cost-4 hash guarding the real secret is 16 rounds:
+  # brute-forceable in seconds, and this secret is what recreates an ADMIN when
+  # the platform has none left.
+  breakglass:
+    secret-hash: ${ADMIN_BREAKGLASS_SECRET_HASH:}
   legal:
     terms-version: "v1"          # DEC-31
   jwt:

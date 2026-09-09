@@ -2248,7 +2248,7 @@ El poller usa FOR UPDATE SKIP LOCKED para soportar mas de una instancia."
 - Create: `src/main/java/…/shared/notifications/EmailType.java`
 - Create: `src/main/java/…/shared/notifications/EmailTemplateService.java`
 - Create: `src/main/java/…/shared/notifications/NotificationEventPublisher.java`
-- Create: `src/main/resources/templates/{code-2fa,activacion-cuenta,reset-password,request-pending,habilitacion-resuelta,alerta-breakglass,whitelist-request,whitelist-resuelta}.html`
+- Create: `src/main/resources/templates/{code-2fa,account-activation,reset-password,whitelist-request-pending,whitelist-request-resolved,breakglass-alert,whitelist-submission,whitelist-decision}.html`
 - Create: `src/main/resources/messages.properties`
 - Test: `src/test/java/…/shared/notifications/EmailTypeTest.java`
 
@@ -2296,8 +2296,8 @@ class EmailTypeTest extends AbstractIntegrationTest {
     @ParameterizedTest
     @EnumSource(EmailType.class)
     void cada_plantilla_existe_en_el_classpath(EmailType tipo) {
-        assertThat(new ClassPathResource("templates/" + tipo.plantilla()).exists())
-                .as("falta templates/%s para %s", tipo.plantilla(), tipo)
+        assertThat(new ClassPathResource("templates/" + tipo.template()).exists())
+                .as("falta templates/%s para %s", tipo.template(), tipo)
                 .isTrue();
     }
 
@@ -2339,42 +2339,42 @@ package ar.edu.utn.frc.tup.p4.usersservice.shared.notifications;
  */
 public enum EmailType {
 
-    CODIGO_2FA            ("code-2fa.html",            "email.2fa.asunto",           "EMAIL_2FA"),
-    ACTIVACION_CUENTA     ("account-activation.html",     "email.activacion.asunto",    "EMAIL_ACTIVACION_CUENTA"),
-    RESET_PASSWORD        ("reset-password.html",        "email.reset.asunto",         "EMAIL_RESET_PASSWORD"),
-    SOLICITUD_PENDIENTE   ("whitelist-request-pending.html",   "email.request.asunto",     "EMAIL_SOLICITUD_PENDIENTE"),
-    HABILITACION_RESUELTA ("whitelist-request-resolved.html", "email.habilitacion.asunto",  "EMAIL_HABILITACION_RESUELTA"),
-    ALERTA_BREAKGLASS     ("breakglass-alert.html",     "email.breakglass.asunto",    "EMAIL_ALERTA_BREAKGLASS"),
-    WHITELIST_SOLICITUD   ("whitelist-submission.html",   "email.wl.request.asunto",  "EMAIL_WHITELIST_SOLICITUD"),
-    WHITELIST_RESUELTA    ("whitelist-decision.html",    "email.wl.resuelta.asunto",   "EMAIL_WHITELIST_RESUELTA");
+    TWO_FACTOR_CODE       ("code-2fa.html",                   "email.2fa.subject",          "EMAIL_2FA"),
+    ACCOUNT_ACTIVATION    ("account-activation.html",         "email.activation.subject",   "EMAIL_ACTIVACION_CUENTA"),
+    RESET_PASSWORD        ("reset-password.html",             "email.reset.subject",        "EMAIL_RESET_PASSWORD"),
+    REQUEST_PENDING       ("whitelist-request-pending.html",  "email.request.subject",      "EMAIL_SOLICITUD_PENDIENTE"),
+    WHITELISTING_RESOLVED ("whitelist-request-resolved.html", "email.whitelisting.subject", "EMAIL_HABILITACION_RESUELTA"),
+    BREAKGLASS_ALERT      ("breakglass-alert.html",           "email.breakglass.subject",   "EMAIL_ALERTA_BREAKGLASS"),
+    WHITELIST_SUBMISSION  ("whitelist-submission.html",       "email.wl.request.subject",   "EMAIL_WHITELIST_SOLICITUD"),
+    WHITELIST_DECISION    ("whitelist-decision.html",         "email.wl.resolved.subject",  "EMAIL_WHITELIST_RESUELTA");
 
-    private final String plantilla;
-    private final String claveAsunto;
+    private final String template;
+    private final String subjectKey;
     private final String eventType;
 
-    EmailType(String plantilla, String claveAsunto, String eventType) {
-        this.plantilla = plantilla;
-        this.claveAsunto = claveAsunto;
+    EmailType(String template, String subjectKey, String eventType) {
+        this.template = template;
+        this.subjectKey = subjectKey;
         this.eventType = eventType;
     }
 
-    public String plantilla()   { return plantilla; }
-    public String claveAsunto() { return claveAsunto; }
-    public String eventType()   { return eventType; }
+    public String template()   { return template; }
+    public String subjectKey() { return subjectKey; }
+    public String eventType()  { return eventType; }
 }
 ```
 
 - [ ] **Step 4: Escribir `messages.properties`**
 
 ```properties
-email.2fa.asunto=Tu code de acceso
-email.activacion.asunto=Activa tu cuenta
-email.reset.asunto=Recuperacion de contrasena
-email.request.asunto=Tu request fue enviada
-email.habilitacion.asunto=Tu cuenta fue habilitada
-email.breakglass.asunto=ALERTA: se uso la recuperacion de emergencia de ADMIN
-email.wl.request.asunto=Nueva request de lista blanca
-email.wl.resuelta.asunto=Tu request de lista blanca fue resuelta
+email.2fa.subject=Tu codigo de acceso
+email.activation.subject=Activa tu cuenta
+email.reset.subject=Recuperacion de contrasena
+email.request.subject=Tu solicitud fue enviada
+email.whitelisting.subject=Tu cuenta fue habilitada
+email.breakglass.subject=ALERTA: se uso la recuperacion de emergencia de ADMIN
+email.wl.request.subject=Nueva solicitud de lista blanca
+email.wl.resolved.subject=Tu solicitud de lista blanca fue resuelta
 ```
 
 - [ ] **Step 5: Escribir las ocho plantillas**
@@ -2511,8 +2511,8 @@ public class EmailTemplateService {
     public MailArmado render(EmailType tipo, Map<String, Object> vars) {
         Context ctx = new Context(ES_AR);
         ctx.setVariables(vars);
-        String html = engine.process(tipo.plantilla(), ctx);
-        String asunto = messages.getMessage(tipo.claveAsunto(), null, ES_AR);
+        String html = engine.process(tipo.template(), ctx);
+        String asunto = messages.getMessage(tipo.subjectKey(), null, ES_AR);
         return new MailArmado(asunto, html);
     }
 }
@@ -4557,7 +4557,7 @@ public class EmailOtpProvider implements SecondFactorProvider {
     @Transactional
     public String generarDesafio(UUID userId, String email, String firstNames) {
         String code = otp.generar(key(userId), props.dosfaTtl());
-        mails.enviar(EmailType.CODIGO_2FA, email, Map.of("firstNames", firstNames, "code", code));
+        mails.enviar(EmailType.TWO_FACTOR_CODE, email, Map.of("firstNames", firstNames, "code", code));
         return code;   // NUNCA se loguea ni se devuelve al cliente
     }
 
@@ -5700,7 +5700,7 @@ En `src/test/java/…/auth/TestResetSpy.java`, agregar el segundo campo y la ram
         real.enviar(tipo, to, vars);
         if (tipo == EmailType.RESET_PASSWORD) {
             this.ultimoToken = tokenDe(vars);
-        } else if (tipo == EmailType.ACTIVACION_CUENTA) {
+        } else if (tipo == EmailType.ACCOUNT_ACTIVATION) {
             // RF-USR-04: activation also travels by link, so the same spy
             // serves both long-token flows.
             this.ultimoTokenActivacion = tokenDe(vars);
@@ -5987,7 +5987,7 @@ public class RegistrationService {
         // person: if the link activated on a GET, the scanner would consume the
         // token of the whole cohort. The frontend screen only activates
         // when somebody presses the button, and no scanner does that.
-        mails.enviar(EmailType.ACTIVACION_CUENTA, u.getEmail(),
+        mails.enviar(EmailType.ACCOUNT_ACTIVATION, u.getEmail(),
                 Map.of("firstNames", u.getFirstNames(),
                        "enlace", urlFront + "/activate?token=" + token));
     }
@@ -6010,7 +6010,7 @@ public class RegistrationService {
             eventos.publicar(topics.studentRegistered(), "ALUMNO_REGISTRADO",
                     new PayloadAlumnoRegistrado(u.getId().toString(), u.getLegajo(),
                             leerCodigoInvitacion(u)));
-            mails.enviar(EmailType.SOLICITUD_PENDIENTE, u.getEmail(),
+            mails.enviar(EmailType.REQUEST_PENDING, u.getEmail(),
                     Map.of("firstNames", u.getFirstNames(),
                            "accountStatus", AccountStatus.PENDING_COURSE.name()));
         }
@@ -6930,7 +6930,7 @@ public class WhitelistService {
 
         usuarios.findAll().stream()
                 .filter(u -> u.getRole() == Role.ADMIN && u.getDeletedAt() == null)
-                .forEach(a -> mails.enviar(EmailType.WHITELIST_SOLICITUD, a.getEmail(),
+                .forEach(a -> mails.enviar(EmailType.WHITELIST_SUBMISSION, a.getEmail(),
                         Map.of("emailSolicitado", r.getRequestedEmail(), "reason", reason)));
         return r.getId();
     }
@@ -6955,7 +6955,7 @@ public class WhitelistService {
         solicitudes.save(r);
 
         usuarios.findByIdAndDeletedAtIsNull(r.getRequestedBy()).ifPresent(prof ->
-                mails.enviar(EmailType.WHITELIST_RESUELTA, prof.getEmail(), Map.of(
+                mails.enviar(EmailType.WHITELIST_DECISION, prof.getEmail(), Map.of(
                         "firstNames", prof.getFirstNames(),
                         "emailSolicitado", r.getRequestedEmail(),
                         "resultado", approve ? RequestStatus.APPROVED.name()
@@ -7299,7 +7299,7 @@ public class CourseValidationListener {
         repo.findByIdAndDeletedAtIsNull(userId).ifPresent(u -> {
             u.activateAfterCourseValidation();   // no-op si ya estaba ACTIVE
             repo.save(u);
-            mails.enviar(EmailType.HABILITACION_RESUELTA, u.getEmail(),
+            mails.enviar(EmailType.WHITELISTING_RESOLVED, u.getEmail(),
                     Map.of("firstNames", u.getFirstNames()));
         });
     }
@@ -7686,7 +7686,7 @@ public class AdminRecoveryCommand {
                 repo.findAll().stream()
                         .filter(u -> u.getRole() == Role.ADMIN && u.getDeletedAt() == null
                                      && !u.getId().equals(adminId))
-                        .forEach(a -> mails.enviar(EmailType.ALERTA_BREAKGLASS, a.getEmail(),
+                        .forEach(a -> mails.enviar(EmailType.BREAKGLASS_ALERT, a.getEmail(),
                                 Map.of("adminId", adminId.toString())));
             });
         } catch (Exception e) {
