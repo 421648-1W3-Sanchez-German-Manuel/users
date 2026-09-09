@@ -52,7 +52,8 @@ public class OutboxPoller {
                         "OUTBOX_PUBLISH_FAILED eventId={} topic={} attempts={}",
                         event.getEventId(),
                         event.getTopic(),
-                        event.getAttempts());
+                        event.getAttempts(),
+                        exception);
             }
         }
     }
