@@ -1,0 +1,9 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<body style="font-family:sans-serif">
+  <p>Hola <span th:text="${firstNames}">Nombre</span>,</p>
+  <p>Para activar tu cuenta, ingresá este código en la pantalla de validación:</p>
+  <p style="font-size:28px;letter-spacing:4px"><strong th:text="${code}">000000</strong></p>
+  <p>Vence en 30 minutos. Si venció, pedí uno nuevo desde la misma pantalla.</p>
+</body>
+</html>

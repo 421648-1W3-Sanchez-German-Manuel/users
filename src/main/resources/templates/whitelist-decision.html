@@ -1,0 +1,9 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<body style="font-family:sans-serif">
+  <p>Hola <span th:text="${firstNames}">Nombre</span>,</p>
+  <p>Tu solicitud para <strong th:text="${emailSolicitado}">correo electrónico</strong> fue
+     <strong th:text="${resultado}">APROBADA</strong>.</p>
+  <p th:if="${reason != null}">Motivo: <span th:text="${reason}">Motivo</span></p>
+</body>
+</html>

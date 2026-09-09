@@ -1,0 +1,9 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<body style="font-family:sans-serif">
+  <p>Hola <span th:text="${firstNames}">Nombre</span>,</p>
+  <p>Tu solicitud fue enviada y está a la espera de que se valide tu inscripción.</p>
+  <p>Estado actual: <strong th:text="${accountStatus}">PENDING_COURSE</strong>.</p>
+  <p>Te avisaremos por este medio apenas se resuelva.</p>
+</body>
+</html>
