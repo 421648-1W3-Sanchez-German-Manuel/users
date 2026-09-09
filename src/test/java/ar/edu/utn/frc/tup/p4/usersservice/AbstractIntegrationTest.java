@@ -29,6 +29,24 @@ import java.util.Map;
  * exceeds the Testcontainers startup window. In RAM it takes ~10s. Same image,
  * same semantics — only the physical medium changes.
  *
+ * THE CONSEQUENCE THAT BITES: one database, shared by every test class, with NO
+ * cleanup between them. What one class commits, the next one sees.
+ *
+ * So a fixed e-mail in a fixture is a collision waiting to happen. EmailReuseIT
+ * commits `dup@utn.edu.ar` to prove the unique index of DEC-21; any other test
+ * that inserts that same address gets a duplicate-key error it did not expect,
+ * or — worse — its FIRST insert fails with a 409 that looks like a bug in the
+ * code under test. Same for `uq_whitelist_request_pending`.
+ *
+ * Use a unique address per run in anything you insert:
+ *
+ *     String email = "alta-" + UUID.randomUUID() + "@utn.edu.ar";
+ *
+ * And do not "fix" it by adding @Transactional to the test: half of what is
+ * being verified here is what the DATABASE does on commit — generated columns,
+ * unique indexes, SKIP LOCKED — and a transaction that rolls back never gets
+ * there.
+ *
  * It registers NO test doubles. An @Import listing the spies of every flow
  * would turn this class — the base of ALL integration tests — into a file five
  * different people edit. Each test declares its own:

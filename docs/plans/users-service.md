@@ -5614,6 +5614,36 @@ El catalogo emitible queda en un solo scope: users.profile.read."
 
 ### Task 17: Registro y activación de la cuenta por enlace
 
+> **Una base de datos, compartida por todas las clases de test, sin limpieza
+> entre ellas.** Los contenedores son singleton de JVM (ver
+> `AbstractIntegrationTest` y por qué tiene que ser así), y nadie borra filas al
+> terminar: lo que una clase commitea, la siguiente lo ve.
+>
+> Entonces **un email fijo en un fixture es una colisión esperando pasar.**
+> `EmailReuseIT` commitea `dup@utn.edu.ar` para probar el índice único de
+> `DEC-21`. Cualquier test que inserte esa misma dirección recibe un error de
+> clave duplicada que no esperaba o, peor, su **primer** alta falla con un 409
+> que parece un bug del código bajo prueba. Lo mismo aplica a
+> `uq_whitelist_request_pending`.
+>
+> Usá una dirección única por corrida en todo lo que insertes:
+>
+> ```java
+> String email = "alta-" + UUID.randomUUID() + "@utn.edu.ar";
+> ```
+>
+> Y no lo "arregles" poniéndole `@Transactional` al test: la mitad de lo que se
+> verifica acá es lo que hace **la base** al commitear — columnas generadas,
+> índices únicos, `SKIP LOCKED` — y una transacción que hace rollback nunca
+> llega ahí.
+>
+> **Un WARN de Hibernate no es una falla.** `HHH000247 ErrorCode: 1062` con
+> `Duplicate entry ... for key 'users.uq_users_active_email'` es exactamente lo
+> que `EmailReuseIT` provoca a propósito: Hibernate loguea el error del driver
+> mientras sube, el test lo atrapa y afirma sobre él. Si el build cierra en
+> verde, ese WARN es la prueba de que el índice funciona.
+
+
 **Files:**
 - Create: `src/main/java/…/users/services/RegistrationService.java`
 - Create: `src/main/java/…/users/controllers/RegistrationController.java`
@@ -6155,7 +6185,7 @@ del entorno lo pisa donde haga falta.
 
 - [ ] **Step 7: Correr y verificar que pasan**
 
-Run: `mvn -q verify -Dit.test=RegistrationIT,ActivationLinkIT`
+Run: `mvn -q clean verify -Dit.test=RegistrationIT,ActivationLinkIT`
 Expected: PASS — 11 tests.
 
 Verificación manual contra el stack levantado, que es la que prueba lo que el
