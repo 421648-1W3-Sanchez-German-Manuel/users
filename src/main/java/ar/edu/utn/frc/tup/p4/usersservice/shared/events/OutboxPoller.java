@@ -34,10 +34,18 @@ public class OutboxPoller {
     @Scheduled(fixedDelayString = "PT2S")
     @Transactional
     public void publicarPendientes() {
-        outbox.takePending(Limit.of(BATCH_SIZE)).forEach(event -> {
+        var pendingEvents = outbox.takePending(Limit.of(BATCH_SIZE));
+        for (var event : pendingEvents) {
             try {
                 kafka.send(event.getTopic(), event.getEventId(), event.getPayload()).get();
                 event.markPublished();
+            } catch (InterruptedException exception) {
+                Thread.currentThread().interrupt();
+                LOG.warn(
+                        "OUTBOX_PUBLISH_INTERRUPTED eventId={} topic={}",
+                        event.getEventId(),
+                        event.getTopic());
+                return;
             } catch (Exception exception) {
                 event.recordFailedAttempt();
                 LOG.warn(
@@ -45,8 +53,7 @@ public class OutboxPoller {
                         event.getEventId(),
                         event.getTopic(),
                         event.getAttempts());
-                Thread.currentThread().interrupt();
             }
-        });
+        }
     }
 }
