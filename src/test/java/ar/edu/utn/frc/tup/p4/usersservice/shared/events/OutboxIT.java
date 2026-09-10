@@ -6,6 +6,8 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionTemplate;
 
+import java.util.UUID;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
@@ -21,14 +23,25 @@ class OutboxIT extends AbstractIntegrationTest {
     @Test
     @Transactional
     void publicar_escribe_una_fila_pendiente_no_publica_a_kafka() {
-        publisher.publicar("topico.test.v1", "EVENTO_TEST", new Payload("valor"));
+        // Topico unico por corrida, y se filtra por el. La base de datos es UNA
+        // para todas las clases de test y nadie limpia entre ellas: en cuanto
+        // otro flujo publica un evento -- el mail de 2FA del login, el de
+        // activacion del alta -- el outbox deja de tener una sola fila y este
+        // test falla por algo que no tiene nada que ver con lo que prueba.
+        //
+        // Es el mismo patron que ya usa el segundo test de esta clase, que mide
+        // un delta contra `outbox.count()` en vez de afirmar sobre la tabla
+        // entera.
+        String topico = "topico.test." + UUID.randomUUID();
+        publisher.publicar(topico, "EVENTO_TEST", new Payload("valor"));
 
         var pendientes = outbox.findAll().stream()
                 .filter(event -> event.getPublishedAt() == null)
+                .filter(event -> topico.equals(event.getTopic()))
                 .toList();
 
         assertThat(pendientes).hasSize(1);
-        assertThat(pendientes.getFirst().getTopic()).isEqualTo("topico.test.v1");
+        assertThat(pendientes.getFirst().getTopic()).isEqualTo(topico);
         assertThat(pendientes.getFirst().getPayload()).contains("\"eventType\":\"EVENTO_TEST\"");
         assertThat(pendientes.getFirst().getPayload()).contains("\"producer\":\"tema-01-users\"");
     }

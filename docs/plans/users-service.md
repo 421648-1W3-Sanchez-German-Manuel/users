@@ -2584,7 +2584,6 @@ test no se podia escribir sin listarlos a mano."
 ### Task 8: Los tres gates de cuenta
 
 **Files:**
-- Create: `src/main/java/…/shared/gates/SkipAccountGate.java`
 - Create: `src/main/java/…/shared/gates/AccountGateInterceptor.java`
 - Create: `src/main/java/…/config/WebConfig.java`
 - Test: `src/test/java/…/shared/gates/AccountGateInterceptorTest.java`
@@ -2621,7 +2620,16 @@ test no se podia escribir sin listarlos a mano."
 >
 > Los dos tests del Step 4 fijan las dos mitades de esta regla.
 
-- [ ] **Step 1: Escribir la anotación**
+- [ ] **Step 1: Leer la anotación — ya está en la base**
+
+`shared/gates/SkipAccountGate.java` **no la escribís vos**: viene en la base.
+La ponen tres lotes en sus endpoints (L1 en logout, refresh y cambio de
+password; L6 en onboarding; vos en los tuyos) y la interpreta **uno solo**,
+que es tu `AccountGateInterceptor`. Una anotación que tres lotes necesitan
+para compilar es una costura, y las costuras son de la base.
+
+Mientras vivió acá, L1 no podía escribir una línea de T14 hasta que vos
+mergearas. Esto es lo que ya está en `main`, para que la leas:
 
 ```java
 package ar.edu.utn.frc.tup.p4.usersservice.shared.gates;
@@ -4786,7 +4794,10 @@ DEC-22: el login post-2FA es la unica operacion que escribe session:{userId}."
 - Test: `src/test/java/…/auth/LogoutIT.java`
 
 **Interfaces:**
-- Consumes: todo lo de T13.
+- Consumes: todo lo de T13, más `@SkipAccountGate` (**en la base**, no en T8:
+  el interceptor que la interpreta es de T8, la anotación no). Sin el
+  interceptor de L4 los gates no se aplican y tus endpoints andan igual; los
+  tests de que el gate EXIME de verdad son de L4.
 - Produces: `CredentialService.tokenData(UUID)` → `DatosToken(List<Role> roles, AccountStatus accountStatus, boolean mustChangePassword, boolean firstLogin)`; `AuthService.refrescar(String refreshJti)` → `TokenResponse`; `AuthService.logout(UUID userId, String refreshJti)`.
 
 - [ ] **Step 1: Escribir el test de refresh (falla)**
