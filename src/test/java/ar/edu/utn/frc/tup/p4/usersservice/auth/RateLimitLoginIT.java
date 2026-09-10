@@ -1,0 +1,77 @@
+package ar.edu.utn.frc.tup.p4.usersservice.auth;
+
+import ar.edu.utn.frc.tup.p4.usersservice.AbstractIntegrationTest;
+import ar.edu.utn.frc.tup.p4.usersservice.auth.services.AuthService;
+import ar.edu.utn.frc.tup.p4.usersservice.shared.web.ApiException;
+import ar.edu.utn.frc.tup.p4.usersservice.users.entities.User;
+import ar.edu.utn.frc.tup.p4.usersservice.users.enums.AccountStatus;
+import ar.edu.utn.frc.tup.p4.usersservice.users.enums.Role;
+import ar.edu.utn.frc.tup.p4.usersservice.users.repositories.UserRepository;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.security.crypto.password.PasswordEncoder;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+
+/** DEC-42 · criterio de DoD #30. */
+class RateLimitLoginIT extends AbstractIntegrationTest {
+
+    @Autowired AuthService auth;
+    @Autowired UserRepository repo;
+    @Autowired PasswordEncoder encoder;
+
+    @Test
+    void al_sexto_FALLO_sobre_el_mismo_email_responde_429() {
+        crear("rl1@utn.edu.ar");
+        for (int i = 0; i < 5; i++) {
+            assertThatThrownBy(() -> auth.login("rl1@utn.edu.ar", "malamala1234"))
+                    .isInstanceOf(ApiException.class)
+                    .extracting(e -> ((ApiException) e).getStatus().value()).isEqualTo(401);
+        }
+        assertThatThrownBy(() -> auth.login("rl1@utn.edu.ar", "malamala1234"))
+                .isInstanceOf(ApiException.class)
+                .satisfies(e -> {
+                    assertThat(((ApiException) e).getStatus().value()).isEqualTo(429);
+                    assertThat(((ApiException) e).getExtras()).containsKey("retryAfterSeconds");
+                    assertThat(((ApiException) e).getType().toString()).endsWith("/too-many-attempts");
+                });
+    }
+
+    @Test
+    void un_login_EXITOSO_no_consume_presupuesto_y_limpia_los_fallos() {
+        // It counts failures, not attempts: a legitimate user never hits the limit.
+        crear("rl2@utn.edu.ar");
+        for (int i = 0; i < 4; i++) {
+            assertThatThrownBy(() -> auth.login("rl2@utn.edu.ar", "malamala1234"))
+                    .isInstanceOf(ApiException.class);
+        }
+        auth.login("rl2@utn.edu.ar", "passwordvalida1");   // acierta -> limpia
+
+        // Vuelve a tener las 5 oportunidades completas.
+        for (int i = 0; i < 5; i++) {
+            assertThatThrownBy(() -> auth.login("rl2@utn.edu.ar", "malamala1234"))
+                    .isInstanceOf(ApiException.class)
+                    .extracting(e -> ((ApiException) e).getStatus().value()).isEqualTo(401);
+        }
+    }
+
+    @Test
+    void el_limite_es_por_email_no_global() {
+        crear("rl3@utn.edu.ar");
+        crear("rl4@utn.edu.ar");
+        for (int i = 0; i < 6; i++) {
+            try { auth.login("rl3@utn.edu.ar", "malamala1234"); } catch (ApiException ignored) { }
+        }
+        // La otra cuenta no quedo afectada.
+        assertThatThrownBy(() -> auth.login("rl4@utn.edu.ar", "malamala1234"))
+                .isInstanceOf(ApiException.class)
+                .extracting(e -> ((ApiException) e).getStatus().value()).isEqualTo(401);
+    }
+
+    private void crear(String email) {
+        User u = User.create("A", "A", email, encoder.encode("passwordvalida1"), Role.STUDENT, "v1");
+        u.forceStatusForTest(AccountStatus.ACTIVE);
+        repo.saveAndFlush(u);
+    }
+}
