@@ -23,10 +23,9 @@ public class EmailOtpProvider implements SecondFactorProvider {
 
     @Override
     @Transactional
-    public String generarDesafio(UUID userId, String email, String firstNames) {
+    public void generarDesafio(UUID userId, String email, String firstNames) {
         String code = otp.generar(key(userId), props.dosfaTtl());
         mails.enviar(EmailType.TWO_FACTOR_CODE, email, Map.of("firstNames", firstNames, "code", code));
-        return code;   // NUNCA se loguea ni se devuelve al cliente
     }
 
     @Override
