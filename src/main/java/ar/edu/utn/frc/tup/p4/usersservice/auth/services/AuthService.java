@@ -6,6 +6,7 @@ import ar.edu.utn.frc.tup.p4.usersservice.auth.store.TokenStore;
 import ar.edu.utn.frc.tup.p4.usersservice.auth.tokens.TokenClaims;
 import ar.edu.utn.frc.tup.p4.usersservice.auth.twofactor.SecondFactorProvider;
 import ar.edu.utn.frc.tup.p4.usersservice.config.JwtProperties;
+import ar.edu.utn.frc.tup.p4.usersservice.config.OtpProperties;
 import ar.edu.utn.frc.tup.p4.usersservice.config.RateLimitProperties;
 import ar.edu.utn.frc.tup.p4.usersservice.shared.web.ApiException;
 import ar.edu.utn.frc.tup.p4.usersservice.users.services.CredentialService;
@@ -26,13 +27,15 @@ public class AuthService {
     private final EphemeralTokenService efimeros;
     private final JwtProperties jwt;
     private final RateLimitProperties rate;
+    private final OtpProperties otpProps;
 
     public AuthService(CredentialService credenciales, SecondFactorProvider segundoFactor,
                        TokenService tokens, TokenStore store, EphemeralTokenService efimeros,
-                       JwtProperties jwt, RateLimitProperties rate) {
+                       JwtProperties jwt, RateLimitProperties rate,
+                       OtpProperties otpProps) {
         this.credenciales = credenciales; this.segundoFactor = segundoFactor;
         this.tokens = tokens; this.store = store; this.efimeros = efimeros;
-        this.jwt = jwt; this.rate = rate;
+        this.jwt = jwt; this.rate = rate; this.otpProps = otpProps;
     }
 
     /** Fase 1: valida credenciales y dispara el 2FA. NO emite tokens. */
@@ -51,7 +54,11 @@ public class AuthService {
         store.limpiarFallos(key);   // acerto: no consume presupuesto
 
         String challengeId = UUID.randomUUID().toString();
-        efimeros.guardar("desafio:" + challengeId, verificadas.userId().toString(), Duration.ofMinutes(5));
+        // El desafio y el code tienen que vivir lo MISMO. Con el 5 hardcodeado,
+        // subir users.otp.two-factor-ttl a PT10M rompia todo login entre el
+        // minuto 5 y el 10: code vivo, desafio vencido, invalid-code. Un cambio
+        // solo de configuracion, sin senal de compilacion ni de tests.
+        efimeros.guardar("desafio:" + challengeId, verificadas.userId().toString(), otpProps.dosfaTtl());
         segundoFactor.generarDesafio(verificadas.userId(), verificadas.email(), verificadas.firstNames());
 
         return new LoginResponse(challengeId, "Te enviamos un code por email.");
