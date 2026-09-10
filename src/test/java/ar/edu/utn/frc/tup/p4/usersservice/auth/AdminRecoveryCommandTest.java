@@ -1,7 +1,7 @@
 package ar.edu.utn.frc.tup.p4.usersservice.auth;
 
 import ar.edu.utn.frc.tup.p4.usersservice.AbstractIntegrationTest;
-import ar.edu.utn.frc.tup.p4.usersservice.auth.cli.AdminRecoveryCommand;
+import ar.edu.utn.frc.tup.p4.usersservice.users.cli.AdminRecoveryCommand;
 import ar.edu.utn.frc.tup.p4.usersservice.users.enums.Role;
 import ar.edu.utn.frc.tup.p4.usersservice.users.repositories.UserRepository;
 import org.junit.jupiter.api.Disabled;

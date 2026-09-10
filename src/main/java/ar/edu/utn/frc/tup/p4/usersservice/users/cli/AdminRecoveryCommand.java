@@ -1,4 +1,4 @@
-package ar.edu.utn.frc.tup.p4.usersservice.auth.cli;
+package ar.edu.utn.frc.tup.p4.usersservice.users.cli;
 
 import ar.edu.utn.frc.tup.p4.usersservice.users.PasswordPolicy;
 import ar.edu.utn.frc.tup.p4.usersservice.users.entities.User;
