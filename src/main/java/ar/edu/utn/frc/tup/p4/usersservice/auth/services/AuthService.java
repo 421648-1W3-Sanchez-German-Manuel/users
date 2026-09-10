@@ -112,7 +112,13 @@ public class AuthService {
     public TokenResponse refrescar(String refreshJti) {
         // Reuse detection: a rotated token coming back is a theft signal. The
         // whole family dies with it.
-        var rotado = efimeros.verificar("refresh:rotado:" + refreshJti);
+        //
+        // El prefijo NO puede empezar con "refresh:": ese namespace es de
+        // RedisTokenStore (REFRESH_PREFIX y REVOKED_FAMILY_PREFIX). Con
+        // "refresh:rotado:", mandar refreshToken="rotado:<jti>" hacia que
+        // store.refresh() leyera esta misma clave, cuyo valor es un familyId
+        // pelado y no el JSON de RefreshData: 500 en vez de 401.
+        var rotado = efimeros.verificar(claveRotado(refreshJti));
         if (rotado.isPresent()) {
             store.revocarFamilia(rotado.get());
             throw ApiException.sessionClosed();
@@ -141,9 +147,11 @@ public class AuthService {
         // 4. Rotate the REFRESH (not the sid). Reuse detection: the old one dies,
         // and its key marks the family for the rest of the refresh life.
         store.revocarRefresh(refreshJti);
-        efimeros.guardar("refresh:rotado:" + refreshJti, data.familyId(), jwt.refreshTtl());
+        efimeros.guardar(claveRotado(refreshJti), data.familyId(), jwt.refreshTtl());
         return emitirConSid(data.userId(), data.sid(), data.familyId());
     }
+
+    private String claveRotado(String jti) { return "rotado:refresh:" + jti; }
 
     /**
      * DEC-02 + DEC-22: uno de los dos unicos borrados de session:{userId}.
