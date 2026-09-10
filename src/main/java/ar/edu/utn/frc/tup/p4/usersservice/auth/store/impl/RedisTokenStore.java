@@ -18,6 +18,7 @@ public class RedisTokenStore implements TokenStore {
     private static final String REFRESH_PREFIX = "refresh:";
     private static final String REVOKED_FAMILY_PREFIX = "refresh:familia-revocada:";
     private static final String LOGIN_FAILURE_PREFIX = "ratelimit:login:";
+    private static final String RATE_LIMIT_PREFIX = "ratelimit:";
 
     /**
      * Atomically INCR and set TTL on the first failure so a crash between the
@@ -97,6 +98,15 @@ public class RedisTokenStore implements TokenStore {
     @Override
     public void limpiarFallos(String key) {
         redis.delete(LOGIN_FAILURE_PREFIX + key);
+    }
+
+    @Override
+    public int incrementarUso(String bucket, String key, Duration ventana) {
+        Long usos = redis.execute(
+                INCR_WITH_TTL,
+                List.of(RATE_LIMIT_PREFIX + bucket + ":" + key),
+                String.valueOf(ventana.toSeconds()));
+        return usos == null ? 0 : usos.intValue();
     }
 
     private String write(RefreshData data) {

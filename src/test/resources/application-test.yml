@@ -54,6 +54,10 @@ users:
   ratelimit:
     login-max-failures: 5
     login-window: PT15M
+    reset-max-requests: 3
+    reset-window: PT15M
+    twofactor-max-challenges: 5
+    twofactor-window: PT15M
   kafka:
     topics:
       audit: tema-01-users.auditoria.v1

@@ -53,6 +53,15 @@ public class AuthService {
 
         store.limpiarFallos(key);   // acerto: no consume presupuesto
 
+        // Tope de desafios EMITIDOS. La password correcta ya no alcanza para
+        // disparar mails sin limite: quien la robo podia inundar la casilla del
+        // dueno de la cuenta, que es justo a quien 2FA tiene que proteger.
+        // Presupuesto propio, separado del de fallos de login: si compartieran
+        // clave, un login exitoso lo limpiaria y no limitaria nada.
+        if (store.incrementarUso("2fa", key, rate.dosfaVentana()) > rate.dosfaMaxDesafios()) {
+            throw ApiException.tooManyAttempts(rate.dosfaVentana());
+        }
+
         String challengeId = UUID.randomUUID().toString();
         // El desafio y el code tienen que vivir lo MISMO. Con el 5 hardcodeado,
         // subir users.otp.two-factor-ttl a PT10M rompia todo login entre el

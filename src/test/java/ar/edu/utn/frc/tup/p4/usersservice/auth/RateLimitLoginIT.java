@@ -79,6 +79,19 @@ class RateLimitLoginIT extends AbstractIntegrationTest {
                 .extracting(e -> ((ApiException) e).getStatus().value()).isEqualTo(401);
     }
 
+    @Test
+    void al_sexto_DESAFIO_de_2fa_sobre_el_mismo_email_responde_429() {
+        // Presupuesto separado del de fallos: acertar la password no lo limpia.
+        // Sin esto, quien robo la password inunda de mails al dueno de la cuenta.
+        crear("rl5" + SUF);
+        for (int i = 0; i < 5; i++) {
+            assertThat(auth.login("rl5" + SUF, "passwordvalida1").challengeId()).isNotBlank();
+        }
+        assertThatThrownBy(() -> auth.login("rl5" + SUF, "passwordvalida1"))
+                .isInstanceOf(ApiException.class)
+                .extracting(e -> ((ApiException) e).getStatus().value()).isEqualTo(429);
+    }
+
     private void crear(String email) {
         User u = User.create("A", "A", email, encoder.encode("passwordvalida1"), Role.STUDENT, "v1");
         u.forceStatusForTest(AccountStatus.ACTIVE);

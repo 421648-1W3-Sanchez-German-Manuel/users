@@ -115,6 +115,10 @@ users:
   ratelimit:
     login-max-failures: 5        # DEC-42
     login-window: PT15M
+    reset-max-requests: 3        # pedidos de reset por email
+    reset-window: PT15M
+    twofactor-max-challenges: 5  # mails de 2FA por email
+    twofactor-window: PT15M
   kafka:
     # DEC-34: a topic name is configuration, never a constant.
     #

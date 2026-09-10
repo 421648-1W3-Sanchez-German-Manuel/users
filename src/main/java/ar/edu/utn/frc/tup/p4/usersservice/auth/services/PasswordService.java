@@ -2,6 +2,7 @@ package ar.edu.utn.frc.tup.p4.usersservice.auth.services;
 
 import ar.edu.utn.frc.tup.p4.usersservice.auth.store.EphemeralTokenService;
 import ar.edu.utn.frc.tup.p4.usersservice.auth.store.TokenStore;
+import ar.edu.utn.frc.tup.p4.usersservice.config.RateLimitProperties;
 import ar.edu.utn.frc.tup.p4.usersservice.shared.notifications.EmailType;
 import ar.edu.utn.frc.tup.p4.usersservice.shared.notifications.NotificationEventPublisher;
 import ar.edu.utn.frc.tup.p4.usersservice.shared.web.ApiException;
@@ -17,6 +18,7 @@ import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
 import java.time.Duration;
 import java.util.Base64;
+import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
 
@@ -32,13 +34,16 @@ public class PasswordService {
     private final EphemeralTokenService efimeros;
     private final TokenStore store;
     private final NotificationEventPublisher mails;
+    private final RateLimitProperties rate;
     private final String urlFront;
 
     public PasswordService(CredentialService credenciales, EphemeralTokenService efimeros,
                            TokenStore store, NotificationEventPublisher mails,
+                           RateLimitProperties rate,
                            @Value("${users.front-url:https://app.tpi.utn.frc}") String urlFront) {
         this.credenciales = credenciales; this.efimeros = efimeros;
-        this.store = store; this.mails = mails; this.urlFront = urlFront;
+        this.store = store; this.mails = mails;
+        this.rate = rate; this.urlFront = urlFront;
     }
 
     @Transactional
@@ -56,6 +61,18 @@ public class PasswordService {
      */
     @Transactional
     public String pedirReset(String email) {
+        // El limite se cuenta ANTES de buscar la cuenta y sobre el mail que
+        // mandaron, exista o no. Al reves filtraria: solo las direcciones
+        // registradas llegarian al tope. Cuenta intentos y no fallos, porque
+        // aca no hay acierto que pueda limpiar el presupuesto.
+        //
+        // Sin esto, el endpoint es publico y sin techo: mail ilimitado a
+        // cualquier direccion y outbox_events creciendo sin control.
+        String key = email.toLowerCase(Locale.ROOT);
+        if (store.incrementarUso("reset", key, rate.resetVentana()) > rate.resetMaxPedidos()) {
+            throw ApiException.tooManyAttempts(rate.resetVentana());
+        }
+
         var datos = credenciales.findForPasswordReset(email);
         if (datos != null) {
             // Mismo esquema que el enlace de activacion (RegistrationService):

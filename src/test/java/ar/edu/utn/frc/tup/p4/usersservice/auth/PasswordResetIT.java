@@ -94,4 +94,28 @@ class PasswordResetIT extends AbstractIntegrationTest {
         passwords.cambiar(u.getId(), "passwordvalida1", "nuevapasswordok1");
         assertThat(credenciales.verifyCredentials("res5" + SUF, "nuevapasswordok1")).isNotNull();
     }
+
+    @Test
+    void al_cuarto_PEDIDO_de_reset_sobre_el_mismo_email_responde_429() {
+        crear("res6" + SUF);
+        for (int i = 0; i < 3; i++) {
+            assertThat(passwords.pedirReset("res6" + SUF)).isNotBlank();
+        }
+        assertThatThrownBy(() -> passwords.pedirReset("res6" + SUF))
+                .isInstanceOf(ApiException.class)
+                .extracting(e -> ((ApiException) e).getStatus().value()).isEqualTo(429);
+    }
+
+    @Test
+    void el_limite_de_reset_no_filtra_si_la_cuenta_existe() {
+        // Cuenta intentos sobre el mail MANDADO, exista o no. Si contara solo
+        // los que encuentran cuenta, el 429 seria un oraculo de existencia.
+        String inexistente = "fantasma" + SUF;
+        for (int i = 0; i < 3; i++) {
+            assertThat(passwords.pedirReset(inexistente)).isNotBlank();
+        }
+        assertThatThrownBy(() -> passwords.pedirReset(inexistente))
+                .isInstanceOf(ApiException.class)
+                .extracting(e -> ((ApiException) e).getStatus().value()).isEqualTo(429);
+    }
 }

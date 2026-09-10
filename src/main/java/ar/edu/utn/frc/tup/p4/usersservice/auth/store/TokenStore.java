@@ -29,4 +29,11 @@ public interface TokenStore {
     int incrementarFallos(String key, Duration ventana);
 
     void limpiarFallos(String key);
+
+    /**
+     * Contador por ventana, generico. `bucket` separa namespaces para que dos
+     * limites distintos nunca compartan presupuesto. Devuelve el valor DESPUES
+     * de incrementar.
+     */
+    int incrementarUso(String bucket, String key, Duration ventana);
 }
