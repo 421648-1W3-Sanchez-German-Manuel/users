@@ -70,7 +70,7 @@ class AdminRecoveryCommandTest extends AbstractIntegrationTest {
     @Disabled("espera L3 · T6 AccountEventPublisher / T7 NotificationEventPublisher")
     void el_breakglass_manda_mail_a_todos_los_ADMIN_activos() {
         // TODO: cuando L3 provea NotificationEventPublisher, verificar que
-        // AdminRecoveryCommand llama a mails.enviar(EmailType.ALERTA_BREAKGLASS, ...)
+        // AdminRecoveryCommand llama a mails.enviar(EmailType.BREAKGLASS_ALERT, ...)
         // para cada ADMIN activo distinto del recién creado.
         // EmailType y NotificationEventPublisher son de L3.
     }

@@ -19,6 +19,16 @@ import java.util.concurrent.atomic.AtomicInteger;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+/**
+ * OJO: esta clase VACIA la tabla `users`, y es el unico lugar del suite que lo
+ * hace. La regla que prueba es global (countActiveWithLock(ADMIN) <= 1), asi
+ * que no alcanza con emails unicos: la tabla tiene que tener exactamente los
+ * ADMIN que este test crea.
+ *
+ * La base de datos es UNA, compartida por todas las clases de test y sin
+ * limpieza entre ellas. Si tu clase necesita que sus filas sobrevivan a otra
+ * clase, no lo va a lograr: no dependas del orden.
+ */
 class AdminRulesIT extends AbstractIntegrationTest {
 
     @Autowired UserService users;
