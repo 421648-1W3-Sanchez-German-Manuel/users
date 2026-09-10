@@ -5,52 +5,52 @@ package ar.edu.utn.frc.tup.p4.usersservice.shared.notifications;
  */
 public enum EmailType {
 
-    CODIGO_2FA("code-2fa.html", "email.2fa.asunto", "EMAIL_2FA"),
-    ACTIVACION_CUENTA(
+    TWO_FACTOR_CODE("code-2fa.html", "email.2fa.subject", "EMAIL_2FA"),
+    ACCOUNT_ACTIVATION(
             "account-activation.html",
-            "email.activacion.asunto",
+            "email.activation.subject",
             "EMAIL_ACTIVACION_CUENTA"),
     RESET_PASSWORD(
             "reset-password.html",
-            "email.reset.asunto",
+            "email.reset.subject",
             "EMAIL_RESET_PASSWORD"),
-    SOLICITUD_PENDIENTE(
+    REQUEST_PENDING(
             "whitelist-request-pending.html",
-            "email.request.asunto",
+            "email.request.subject",
             "EMAIL_SOLICITUD_PENDIENTE"),
-    HABILITACION_RESUELTA(
+    WHITELISTING_RESOLVED(
             "whitelist-request-resolved.html",
-            "email.habilitacion.asunto",
+            "email.whitelisting.subject",
             "EMAIL_HABILITACION_RESUELTA"),
-    ALERTA_BREAKGLASS(
+    BREAKGLASS_ALERT(
             "breakglass-alert.html",
-            "email.breakglass.asunto",
+            "email.breakglass.subject",
             "EMAIL_ALERTA_BREAKGLASS"),
-    WHITELIST_SOLICITUD(
+    WHITELIST_SUBMISSION(
             "whitelist-submission.html",
-            "email.wl.request.asunto",
+            "email.wl.request.subject",
             "EMAIL_WHITELIST_SOLICITUD"),
-    WHITELIST_RESUELTA(
+    WHITELIST_DECISION(
             "whitelist-decision.html",
-            "email.wl.resuelta.asunto",
+            "email.wl.resolved.subject",
             "EMAIL_WHITELIST_RESUELTA");
 
-    private final String plantilla;
-    private final String claveAsunto;
+    private final String template;
+    private final String subjectKey;
     private final String eventType;
 
-    EmailType(String plantilla, String claveAsunto, String eventType) {
-        this.plantilla = plantilla;
-        this.claveAsunto = claveAsunto;
+    EmailType(String template, String subjectKey, String eventType) {
+        this.template = template;
+        this.subjectKey = subjectKey;
         this.eventType = eventType;
     }
 
-    public String plantilla() {
-        return plantilla;
+    public String template() {
+        return template;
     }
 
-    public String claveAsunto() {
-        return claveAsunto;
+    public String subjectKey() {
+        return subjectKey;
     }
 
     public String eventType() {

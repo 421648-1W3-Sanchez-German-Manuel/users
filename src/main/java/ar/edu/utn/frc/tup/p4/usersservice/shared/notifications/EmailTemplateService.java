@@ -27,8 +27,8 @@ public class EmailTemplateService {
     public MailArmado render(EmailType tipo, Map<String, Object> vars) {
         Context context = new Context(ES_AR);
         context.setVariables(vars);
-        String html = engine.process(tipo.plantilla(), context);
-        String subject = messages.getMessage(tipo.claveAsunto(), null, ES_AR);
+        String html = engine.process(tipo.template(), context);
+        String subject = messages.getMessage(tipo.subjectKey(), null, ES_AR);
         return new MailArmado(subject, html);
     }
 }

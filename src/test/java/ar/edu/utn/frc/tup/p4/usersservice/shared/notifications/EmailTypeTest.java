@@ -13,7 +13,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 class EmailTypeTest extends AbstractIntegrationTest {
 
-    @Autowired EmailTemplateService templates;
+    @Autowired 
+    EmailTemplateService templates;
 
     /** Filler variables covering every template. */
     private Map<String, Object> vars() {
@@ -32,8 +33,8 @@ class EmailTypeTest extends AbstractIntegrationTest {
     @ParameterizedTest
     @EnumSource(EmailType.class)
     void eachTemplateExistsOnTheClasspath(EmailType type) {
-        assertThat(new ClassPathResource("templates/" + type.plantilla()).exists())
-                .as("missing templates/%s for %s", type.plantilla(), type)
+        assertThat(new ClassPathResource("templates/" + type.template()).exists())
+                .as("missing templates/%s for %s", type.template(), type)
                 .isTrue();
     }
 
