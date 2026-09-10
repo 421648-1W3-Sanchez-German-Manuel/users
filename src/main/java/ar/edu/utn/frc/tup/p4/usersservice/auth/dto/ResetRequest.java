@@ -1,0 +1,6 @@
+package ar.edu.utn.frc.tup.p4.usersservice.auth.dto;
+
+import jakarta.validation.constraints.Email;
+import jakarta.validation.constraints.NotBlank;
+
+public record ResetRequest(@NotBlank @Email String email) { }
