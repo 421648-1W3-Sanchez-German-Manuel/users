@@ -56,14 +56,14 @@ users-service/
     │   │   ├── otp/OtpService.java                        # DEC-33
     │   │   ├── store/{TokenStore, EphemeralTokenService}.java + impl/
     │   │   ├── keys/{SigningKeyProvider}.java + impl/FileSystemSigningKeyProvider.java
-    │   │   ├── entities/{ServiceClient, ServiceClientScope}.java
-    │   │   └── cli/AdminRecoveryCommand.java              # DEC-32
+    │   │   └── entities/{ServiceClient, ServiceClientScope}.java
     │   ├── users/
     │   │   ├── controllers/{UserController, RegistrationController, WhitelistController}.java
     │   │   ├── services/{UserService, RegistrationService, WhitelistService}.java + impl/CredentialServiceImpl.java
     │   │   ├── entities/{User, EmailWhitelist, WhitelistRequest}.java
     │   │   ├── enums/{Role, AccountStatus, RequestStatus}.java
     │   │   ├── listeners/CourseValidationListener.java
+    │   │   ├── cli/{AdminBootstrap, AdminRecoveryCommand}.java   # DEC-32 - crean usuarios
     │   │   └── repositories/*.java
     │   ├── shared/
     │   │   ├── security/{SecurityConfig, GatewayIdentityFilter, GatewayPrincipal, IdentityHeaders}.java
@@ -7382,14 +7382,14 @@ public class CourseValidationListener {
         this.procesados = procesados; this.mails = mails;
     }
 
-    @KafkaListener(topics = "${users.kafka.topics.validation-curso}")
+    @KafkaListener(topics = "${users.kafka.topics.course-validation}")
     @Transactional
     public void consumir(String message) {
         JsonNode sobre;
         try {
             sobre = mapper.readTree(message);
         } catch (Exception e) {
-            log.error("EVENTO_ILEGIBLE en validation-curso", e);
+            log.error("EVENTO_ILEGIBLE en course-validation", e);
             return;   // veneno: no se reintenta eternamente
         }
 
@@ -7443,7 +7443,7 @@ DEC-09: resultado y cursoId se usan y se descartan. El dueno es Cursos."
 
 **Files:**
 - Create: `src/main/java/…/users/cli/AdminBootstrap.java`
-- Create: `src/main/java/…/auth/cli/AdminRecoveryCommand.java`
+- Create: `src/main/java/…/users/cli/AdminRecoveryCommand.java`
 - Modify: `src/main/resources/application.yml`, `src/test/resources/application-test.yml`
 - Test: `src/test/java/…/users/AdminBootstrapTest.java`
 - Test: `src/test/java/…/auth/AdminRecoveryCommandTest.java`
