@@ -22,4 +22,10 @@ public class AuthController {
     public TokenResponse verificar(@Valid @RequestBody VerifyTwoFactorRequest req) {
         return auth.verificarDosFa(req.challengeId(), req.code());
     }
+
+    /** Ruta PUBLICA: el refresh va en el body, sin Authorization. */
+    @PostMapping("/refresh")
+    public TokenResponse refrescar(@Valid @RequestBody RefreshRequest req) {
+        return auth.refrescar(req.refreshToken());
+    }
 }

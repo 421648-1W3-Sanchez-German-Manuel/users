@@ -93,4 +93,58 @@ public class AuthService {
 
         return new TokenResponse(tokens.firmarPersona(claims), refreshJti, jwt.accessTtl().toSeconds());
     }
+
+    /**
+     * DEC-22 - four steps, and step 3 is the one this spec adds over what
+     * manifiesto-flujos §10 says ("checking here or letting it fail at the gateway
+     * are equivalent"). They are NOT: the refresh lives 7 DAYS. Without the check,
+     * un dispositivo superado conserva una credencial de larga vida, robable,
+     * tied to a session that no longer exists.
+     */
+    @Transactional
+    public TokenResponse refrescar(String refreshJti) {
+        // Reuse detection: a rotated token coming back is a theft signal. The
+        // whole family dies with it.
+        var rotado = efimeros.verificar("refresh:rotado:" + refreshJti);
+        if (rotado.isPresent()) {
+            store.revocarFamilia(rotado.get());
+            throw ApiException.sessionClosed();
+        }
+
+        // The exits of this method return a SESSION type, not invalid-credentials:
+        // nobody mistyped a password, the session stopped existing. The frontend
+        // branches on type, and with invalid-credentials it would show "wrong
+        // username or password" in a flow where neither was requested.
+        var data = store.refresh(refreshJti).orElseThrow(ApiException::sessionClosed);
+
+        // 1-2. Familia revocada -> senal de robo previa.
+        if (store.familiaRevocada(data.familyId())) {
+            throw ApiException.sessionClosed();
+        }
+
+        // 3. Is the session still the current one? If not, there was a newer login:
+        // that case has its own type, which is the only message useful to the
+        // persona ("iniciaste sesion en otro dispositivo").
+        String sidVigente = store.sidDe(data.userId()).orElse(null);
+        if (sidVigente == null || !sidVigente.equals(data.sid())) {
+            store.revocarFamilia(data.familyId());
+            throw sidVigente == null ? ApiException.sessionClosed() : ApiException.sessionSuperseded();
+        }
+
+        // 4. Rotate the REFRESH (not the sid). Reuse detection: the old one dies,
+        // and its key marks the family for the rest of the refresh life.
+        store.revocarRefresh(refreshJti);
+        efimeros.guardar("refresh:rotado:" + refreshJti, data.familyId(), jwt.refreshTtl());
+        return emitirConSid(data.userId(), data.sid(), data.familyId());
+    }
+
+    /** DEC-02 + DEC-22: uno de los dos unicos borrados de session:{userId}. */
+    @Transactional
+    public void logout(UUID userId, String refreshJti) {
+        if (refreshJti != null) {
+            store.refresh(refreshJti).ifPresent(d -> store.revocarFamilia(d.familyId()));
+            store.revocarRefresh(refreshJti);
+        }
+        store.borrarSesion(userId);
+    }
 }
