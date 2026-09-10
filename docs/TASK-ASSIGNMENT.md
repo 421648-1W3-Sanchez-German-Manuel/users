@@ -65,8 +65,8 @@ Not everything can start at once. Dependencies:
 |---|---|---|
 | L1 | Del Lungo | L2 (token issuance), L3 (Redis, OTP, mail) |
 | L5 | Palacios | L3 (mail, ephemeral tokens) |
-| L8 | Sanchez German | L7 (session repository, `ProblemDetails`) |
-| L9 | Tahir | L7 (`ProblemDetails`) |
+| L8 | Sanchez German | L7 — sólo para correr sus dos IT: necesita el **bean** que implementa `SessionRepository` y el ruteo. Compila desde el día uno |
+| L9 | Tahir | L7 — sólo para las IT: necesita el ruteo por allowlist. Compila desde el día uno |
 
 **Wave 3 — needs Wave 2**
 
@@ -89,16 +89,26 @@ beat one large one at the end.
 exhaustive. If you need something changed outside it, ask the owner — that is a
 thirty-second conversation and a fifteen-minute merge conflict avoided.
 
+**That includes when the plan itself tells you to.** A step that says to edit a
+file outside your list is a bug in the plan, not permission. Stop and report it:
+the answer is either that the file moves to the base, or that your lot gets its
+own copy — and either way it is a change to the assignment, not something to
+settle inside one branch. This has already happened once.
+
 **Three files belong to Ramiro alone:** `application.yml`, `pom.xml` and the
 `Dockerfile`. Everyone adds properties and dependencies eventually, and these
 are where ten branches collide. Send the block you need and it gets merged for
 everyone. (`Dockerfile` is the deliverable of L4 and L10 — after that it is
 frozen.)
 
-**Green before merge.** `mvn -q verify` passes - `verify`, not `test`: the
-`*IT` classes run under failsafe and `mvn test` silently skips every one of
-them - and the acceptance check in the last
-step of each task returns what the plan says.
+**Green before merge.** `mvn -q clean verify` passes - `clean` and `verify`, and
+both words earn their place. Without `verify` the `*IT` classes never run:
+failsafe binds them to `verify` and `mvn test` skips every one of them silently.
+Without `clean` the build can pass on stale classes: when a shared file changes,
+Maven recompiles only that file and leaves the `.class` of everything that
+referenced it, so you get green against a classpath that no longer exists. That
+is how a `main` that does not compile got merged once already. And the acceptance check in the last step of
+each task returns what the plan says.
 
 **Daily sync, fifteen minutes, fixed format:** what I finished, what I'm on, what
 blocks me. Blockers go to the group chat the moment they appear, not at the next
@@ -159,7 +169,7 @@ Tus archivos son los que lista la asignación en TASK-ASSIGNMENT.md. No edites
 ningún archivo fuera de esa lista: si necesitás un cambio en otro lado, pará y
 decilo.
 
-Al terminar cada tarea corré `mvn -q verify` y mostrame la salida antes de seguir con
+Al terminar cada tarea corré `mvn -q clean verify` y mostrame la salida antes de seguir con
 la siguiente.
 ```
 
@@ -213,7 +223,7 @@ de tocarlas.
 Tus archivos son los que lista la asignación en TASK-ASSIGNMENT.md. No edites
 ningún archivo fuera de esa lista.
 
-Al terminar cada tarea corré `mvn -q verify` y mostrame la salida.
+Al terminar cada tarea corré `mvn -q clean verify` y mostrame la salida.
 ```
 
 ---
@@ -258,7 +268,7 @@ exime de los dos gates finos y no solo del propio.
 Tus archivos son los que lista la asignación en TASK-ASSIGNMENT.md. No edites
 ningún archivo fuera de esa lista.
 
-Al terminar cada tarea corré `mvn -q verify` y mostrame la salida.
+Al terminar cada tarea corré `mvn -q clean verify` y mostrame la salida.
 ```
 
 ---
@@ -273,20 +283,19 @@ Al terminar cada tarea corré `mvn -q verify` y mostrame la salida.
 src/main/java/…/config/AllowlistRouteLocator.java
 src/main/java/…/config/DiscoveryLocatorConfig.java
 src/main/java/…/config/RedisConfig.java
-src/main/java/…/web/ProblemDetails.java
 src/main/java/…/web/GatewayErrorAttributes.java
 src/main/java/…/web/FallbackController.java
 src/main/java/…/web/RouteNotFoundHandler.java
-src/main/java/…/repository/SessionRepository.java
 src/main/java/…/repository/impl/RedisSessionRepository.java
 src/main/java/…/repository/impl/CachingSessionRepository.java
 src/test/java/…/integration/DiscoveryAllowlistIT.java
-src/test/java/…/web/ProblemDetailsTest.java
 src/test/java/…/repository/CachingSessionRepositoryTest.java
 ```
 
-**Why your lot matters:** two other gateway lots build on your `ProblemDetails`
-and your session repository, so yours has to land first. Task G3 contains a trap
+**Why your lot matters:** `ProblemDetails` and the `SessionRepository` interface
+live in the base so nobody is blocked on compiling, but L8 and L9 cannot RUN a
+single integration test until your routing and your Redis beans are on `main`.
+Yours is what turns their code from written to verifiable. Task G3 contains a trap
 that produces a gateway which starts perfectly and answers 404 to everything —
 read it before you touch the routing.
 
@@ -303,13 +312,13 @@ Antes de empezar, leé el bloque sobre por qué las rutas dinámicas se generan 
 Java y no con el DiscoveryClient locator, y explicame por qué ese error no
 rompería el arranque.
 
-Los lotes L8 y L9 dependen de ProblemDetails y de SessionRepository: sus firmas
+Los lotes L8 y L9 dependen de tus beans: sus firmas
 son contrato, avisá antes de cambiarlas.
 
 Tus archivos son los que lista la asignación en TASK-ASSIGNMENT.md. No edites
 ningún archivo fuera de esa lista.
 
-Al terminar cada tarea corré `mvn -q verify` y mostrame la salida.
+Al terminar cada tarea corré `mvn -q clean verify` y mostrame la salida.
 ```
 
 ---
@@ -340,6 +349,8 @@ src/test/java/…/auth/RateLimitLoginIT.java
 src/test/java/…/auth/SingleSessionRefreshIT.java
 src/test/java/…/auth/LogoutIT.java
 src/test/java/…/auth/PasswordResetIT.java
+src/test/java/…/auth/TestOtpSpy.java
+src/test/java/…/auth/TestResetSpy.java
 ```
 
 **Why your lot matters:** it is the largest and the densest. Single session,
@@ -367,7 +378,7 @@ que ve la persona tiene que decir eso.
 Tus archivos son los que lista la asignación en TASK-ASSIGNMENT.md. No edites
 ningún archivo fuera de esa lista.
 
-Al terminar cada tarea corré `mvn -q verify` y mostrame la salida.
+Al terminar cada tarea corré `mvn -q clean verify` y mostrame la salida.
 ```
 
 ---
@@ -395,6 +406,7 @@ src/main/resources/legal/terms-v1.md
 src/test/java/…/users/RegistrationIT.java
 src/test/java/…/users/ActivationLinkIT.java
 src/test/java/…/users/WhitelistRequestIT.java
+src/test/java/…/users/TestActivationSpy.java
 ```
 
 **Why your lot matters:** it is the front door of the platform. Task U17 carries
@@ -421,7 +433,7 @@ todavía no están, escribí igual los tests: son el paso 1 de cada tarea.
 Tus archivos son los que lista la asignación en TASK-ASSIGNMENT.md. No edites
 ningún archivo fuera de esa lista.
 
-Al terminar cada tarea corré `mvn -q verify` y mostrame la salida.
+Al terminar cada tarea corré `mvn -q clean verify` y mostrame la salida.
 ```
 
 ---
@@ -462,12 +474,13 @@ Al terminar G7, verificá a mano que funciona de punta a punta: mandá un reques
 con un X-Request-Id conocido y comprobá que ese id aparece en la línea de log
 del Gateway. Que el pattern lo declare no alcanza: hay que verlo impreso.
 
-Tu lote consume ProblemDetails y SessionRepository (L7).
+ProblemDetails y SessionRepository ya estan en la base: compilas desde el dia
+uno. De L7 esperas los BEANS (ruteo y Redis) para que tus dos IT levanten.
 
 Tus archivos son los que lista la asignación en TASK-ASSIGNMENT.md. No edites
 ningún archivo fuera de esa lista.
 
-Al terminar cada tarea corré `mvn -q verify` y mostrame la salida.
+Al terminar cada tarea corré `mvn -q clean verify` y mostrame la salida.
 ```
 
 ---
@@ -509,12 +522,13 @@ En G11, el borrado de los cinco headers reservados tiene que aplicar también en
 las rutas públicas, y el test lo tiene que demostrar: es el caso que parece
 innecesario y es el más importante.
 
-Tu lote consume ProblemDetails (L7).
+ProblemDetails ya esta en la base. De L7 esperas el ruteo por allowlist para
+que tus IT no den 404.
 
 Tus archivos son los que lista la asignación en TASK-ASSIGNMENT.md. No edites
 ningún archivo fuera de esa lista.
 
-Al terminar cada tarea corré `mvn -q verify` y mostrame la salida.
+Al terminar cada tarea corré `mvn -q clean verify` y mostrame la salida.
 ```
 
 ---
@@ -568,7 +582,7 @@ que es el dueño de application.yml.
 Tus archivos son los que lista la asignación en TASK-ASSIGNMENT.md. No edites
 ningún archivo fuera de esa lista.
 
-Al terminar cada tarea corré `mvn -q verify` y mostrame la salida.
+Al terminar cada tarea corré `mvn -q clean verify` y mostrame la salida.
 ```
 
 ---
@@ -614,7 +628,7 @@ se puede evadir con un header no limita nada.
 Tus archivos son los que lista la asignación en TASK-ASSIGNMENT.md. No edites
 ningún archivo fuera de esa lista.
 
-Al terminar cada tarea corré `mvn -q verify` y mostrame la salida.
+Al terminar cada tarea corré `mvn -q clean verify` y mostrame la salida.
 ```
 
 ---

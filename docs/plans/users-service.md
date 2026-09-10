@@ -2248,7 +2248,7 @@ El poller usa FOR UPDATE SKIP LOCKED para soportar mas de una instancia."
 - Create: `src/main/java/…/shared/notifications/EmailType.java`
 - Create: `src/main/java/…/shared/notifications/EmailTemplateService.java`
 - Create: `src/main/java/…/shared/notifications/NotificationEventPublisher.java`
-- Create: `src/main/resources/templates/{code-2fa,activacion-cuenta,reset-password,request-pending,habilitacion-resuelta,alerta-breakglass,whitelist-request,whitelist-resuelta}.html`
+- Create: `src/main/resources/templates/{code-2fa,account-activation,reset-password,whitelist-request-pending,whitelist-request-resolved,breakglass-alert,whitelist-submission,whitelist-decision}.html`
 - Create: `src/main/resources/messages.properties`
 - Test: `src/test/java/…/shared/notifications/EmailTypeTest.java`
 
@@ -2296,8 +2296,8 @@ class EmailTypeTest extends AbstractIntegrationTest {
     @ParameterizedTest
     @EnumSource(EmailType.class)
     void cada_plantilla_existe_en_el_classpath(EmailType tipo) {
-        assertThat(new ClassPathResource("templates/" + tipo.plantilla()).exists())
-                .as("falta templates/%s para %s", tipo.plantilla(), tipo)
+        assertThat(new ClassPathResource("templates/" + tipo.template()).exists())
+                .as("falta templates/%s para %s", tipo.template(), tipo)
                 .isTrue();
     }
 
@@ -2339,42 +2339,42 @@ package ar.edu.utn.frc.tup.p4.usersservice.shared.notifications;
  */
 public enum EmailType {
 
-    CODIGO_2FA            ("code-2fa.html",            "email.2fa.asunto",           "EMAIL_2FA"),
-    ACTIVACION_CUENTA     ("account-activation.html",     "email.activacion.asunto",    "EMAIL_ACTIVACION_CUENTA"),
-    RESET_PASSWORD        ("reset-password.html",        "email.reset.asunto",         "EMAIL_RESET_PASSWORD"),
-    SOLICITUD_PENDIENTE   ("whitelist-request-pending.html",   "email.request.asunto",     "EMAIL_SOLICITUD_PENDIENTE"),
-    HABILITACION_RESUELTA ("whitelist-request-resolved.html", "email.habilitacion.asunto",  "EMAIL_HABILITACION_RESUELTA"),
-    ALERTA_BREAKGLASS     ("breakglass-alert.html",     "email.breakglass.asunto",    "EMAIL_ALERTA_BREAKGLASS"),
-    WHITELIST_SOLICITUD   ("whitelist-submission.html",   "email.wl.request.asunto",  "EMAIL_WHITELIST_SOLICITUD"),
-    WHITELIST_RESUELTA    ("whitelist-decision.html",    "email.wl.resuelta.asunto",   "EMAIL_WHITELIST_RESUELTA");
+    TWO_FACTOR_CODE       ("code-2fa.html",                   "email.2fa.subject",          "EMAIL_2FA"),
+    ACCOUNT_ACTIVATION    ("account-activation.html",         "email.activation.subject",   "EMAIL_ACTIVACION_CUENTA"),
+    RESET_PASSWORD        ("reset-password.html",             "email.reset.subject",        "EMAIL_RESET_PASSWORD"),
+    REQUEST_PENDING       ("whitelist-request-pending.html",  "email.request.subject",      "EMAIL_SOLICITUD_PENDIENTE"),
+    WHITELISTING_RESOLVED ("whitelist-request-resolved.html", "email.whitelisting.subject", "EMAIL_HABILITACION_RESUELTA"),
+    BREAKGLASS_ALERT      ("breakglass-alert.html",           "email.breakglass.subject",   "EMAIL_ALERTA_BREAKGLASS"),
+    WHITELIST_SUBMISSION  ("whitelist-submission.html",       "email.wl.request.subject",   "EMAIL_WHITELIST_SOLICITUD"),
+    WHITELIST_DECISION    ("whitelist-decision.html",         "email.wl.resolved.subject",  "EMAIL_WHITELIST_RESUELTA");
 
-    private final String plantilla;
-    private final String claveAsunto;
+    private final String template;
+    private final String subjectKey;
     private final String eventType;
 
-    EmailType(String plantilla, String claveAsunto, String eventType) {
-        this.plantilla = plantilla;
-        this.claveAsunto = claveAsunto;
+    EmailType(String template, String subjectKey, String eventType) {
+        this.template = template;
+        this.subjectKey = subjectKey;
         this.eventType = eventType;
     }
 
-    public String plantilla()   { return plantilla; }
-    public String claveAsunto() { return claveAsunto; }
-    public String eventType()   { return eventType; }
+    public String template()   { return template; }
+    public String subjectKey() { return subjectKey; }
+    public String eventType()  { return eventType; }
 }
 ```
 
 - [ ] **Step 4: Escribir `messages.properties`**
 
 ```properties
-email.2fa.asunto=Tu code de acceso
-email.activacion.asunto=Activa tu cuenta
-email.reset.asunto=Recuperacion de contrasena
-email.request.asunto=Tu request fue enviada
-email.habilitacion.asunto=Tu cuenta fue habilitada
-email.breakglass.asunto=ALERTA: se uso la recuperacion de emergencia de ADMIN
-email.wl.request.asunto=Nueva request de lista blanca
-email.wl.resuelta.asunto=Tu request de lista blanca fue resuelta
+email.2fa.subject=Tu codigo de acceso
+email.activation.subject=Activa tu cuenta
+email.reset.subject=Recuperacion de contrasena
+email.request.subject=Tu solicitud fue enviada
+email.whitelisting.subject=Tu cuenta fue habilitada
+email.breakglass.subject=ALERTA: se uso la recuperacion de emergencia de ADMIN
+email.wl.request.subject=Nueva solicitud de lista blanca
+email.wl.resolved.subject=Tu solicitud de lista blanca fue resuelta
 ```
 
 - [ ] **Step 5: Escribir las ocho plantillas**
@@ -2511,8 +2511,8 @@ public class EmailTemplateService {
     public MailArmado render(EmailType tipo, Map<String, Object> vars) {
         Context ctx = new Context(ES_AR);
         ctx.setVariables(vars);
-        String html = engine.process(tipo.plantilla(), ctx);
-        String asunto = messages.getMessage(tipo.claveAsunto(), null, ES_AR);
+        String html = engine.process(tipo.template(), ctx);
+        String asunto = messages.getMessage(tipo.subjectKey(), null, ES_AR);
         return new MailArmado(asunto, html);
     }
 }
@@ -3919,12 +3919,12 @@ class PasswordPolicyTest {
     void twelve_characters_are_enough_with_no_composition_rules() {
         // NIST SP 800-63B: largo, no complejidad. "Password1!" son 10
         // caracteres predecibles; 12 libres tienen mas entropia real.
-        assertThatCode(() -> PasswordPolicy.validar("todaminusculas")).doesNotThrowAnyException();
+        assertThatCode(() -> PasswordPolicy.validate("todaminusculas")).doesNotThrowAnyException();
     }
 
     @Test
     void fewer_than_twelve_characters_is_rejected() {
-        assertThatThrownBy(() -> PasswordPolicy.validar("corta123")).isInstanceOf(ApiException.class);
+        assertThatThrownBy(() -> PasswordPolicy.validate("corta123")).isInstanceOf(ApiException.class);
     }
 
     @Test
@@ -3932,7 +3932,7 @@ class PasswordPolicyTest {
         // BCrypt silently TRUNCATES at 72 bytes: without this limit, a
         // 100-character password is checked against its first 72 and the
         // user believes they have a strength they do not have.
-        assertThatThrownBy(() -> PasswordPolicy.validar("a".repeat(73)))
+        assertThatThrownBy(() -> PasswordPolicy.validate("a".repeat(73)))
                 .isInstanceOf(ApiException.class);
     }
 
@@ -3941,13 +3941,13 @@ class PasswordPolicyTest {
         // 40 caracteres acentuados = 80 bytes en UTF-8. Contando caracteres
         // esto pasaria, y BCrypt cortaria a mitad de un caracter.
         String cuarentaAcentos = "á".repeat(40);
-        assertThatThrownBy(() -> PasswordPolicy.validar(cuarentaAcentos))
+        assertThatThrownBy(() -> PasswordPolicy.validate(cuarentaAcentos))
                 .isInstanceOf(ApiException.class);
     }
 
     @Test
     void a_common_password_is_rejected_even_when_long_enough() {
-        assertThatThrownBy(() -> PasswordPolicy.validar("password12")).isInstanceOf(ApiException.class);
+        assertThatThrownBy(() -> PasswordPolicy.validate("password12")).isInstanceOf(ApiException.class);
     }
 }
 ```
@@ -4172,7 +4172,7 @@ public class CredentialServiceImpl implements CredentialService {
     @Override
     @Transactional
     public void updatePassword(UUID userId, String newPlainPassword) {
-        PasswordPolicy.validar(newPlainPassword);
+        PasswordPolicy.validate(newPlainPassword);
         User u = repo.findByIdAndDeletedAtIsNull(userId).orElseThrow(ApiException::invalidCredentials);
         u.changePassword(encoder.encode(newPlainPassword));
         repo.save(u);
@@ -4296,6 +4296,7 @@ import ar.edu.utn.frc.tup.p4.usersservice.users.repositories.UserRepository;
 import com.nimbusds.jwt.SignedJWT;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Import;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -4305,6 +4306,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  * Criterios de DoD #3 (login completo, de punta a punta) y #4 (segundo
  * login sobrescribe la sesion).
  */
+@Import(TestOtpSpy.Config.class)   // el spy del Step 5, solo para este test
 class LoginIT extends AbstractIntegrationTest {
 
     @Autowired AuthService auth;
@@ -4557,7 +4559,7 @@ public class EmailOtpProvider implements SecondFactorProvider {
     @Transactional
     public String generarDesafio(UUID userId, String email, String firstNames) {
         String code = otp.generar(key(userId), props.dosfaTtl());
-        mails.enviar(EmailType.CODIGO_2FA, email, Map.of("firstNames", firstNames, "code", code));
+        mails.enviar(EmailType.TWO_FACTOR_CODE, email, Map.of("firstNames", firstNames, "code", code));
         return code;   // NUNCA se loguea ni se devuelve al cliente
     }
 
@@ -4609,14 +4611,21 @@ public class TestOtpSpy implements SecondFactorProvider {
      * would capture codes from one nobody uses.
      */
     @TestConfiguration
-    static class Config {
+    public static class Config {
         @Bean @Primary
         TestOtpSpy spy(EmailOtpProvider real) { return new TestOtpSpy(real); }
     }
 }
 ```
 
-Importar `TestOtpSpy.Config` con `@Import(TestOtpSpy.Config.class)` en `AbstractIntegrationTest`, para que lo vean también los tests de `users/` (`RegistrationIT`, `ActivationCodeIT`), que lo importan desde `ar.edu.utn.frc.tup.p4.usersservice.auth.TestOtpSpy`.
+El `@Import` va en **cada test que usa el spy**, con
+`@Import(TestOtpSpy.Config.class)` sobre la clase — acá, `LoginIT`.
+
+**No lo pongas en `AbstractIntegrationTest`.** Esa clase es de la base y no
+registra ningún doble de test a propósito: si cada lote agrega el suyo ahí,
+seis ramas editan el mismo archivo en el mismo lugar. Además los tres spies
+(`TestOtpSpy`, `TestResetSpy`, `TestActivationSpy`) declaran un `@Primary` cada
+uno; registrados todos juntos en la base, dos compiten por el mismo tipo.
 
 - [ ] **Step 6: Escribir `AuthService`**
 
@@ -5094,12 +5103,14 @@ import ar.edu.utn.frc.tup.p4.usersservice.users.repositories.UserRepository;
 import ar.edu.utn.frc.tup.p4.usersservice.users.services.CredentialService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Import;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /** DEC-16 - two endpoints, not one. `flujos` §06 drew them as the same POST. */
+@Import(TestResetSpy.Config.class)   // el spy del Step 4, solo para este test
 class PasswordResetIT extends AbstractIntegrationTest {
 
     @Autowired PasswordService passwords;
@@ -5108,6 +5119,7 @@ class PasswordResetIT extends AbstractIntegrationTest {
     @Autowired PasswordEncoder encoder;
     @Autowired TokenStore store;
     @Autowired TestResetSpy spy;      // captura el token, igual que TestOtpSpy
+                                      // (solo RESET_PASSWORD: ver Step 4)
 
     private User crear(String email) {
         User u = User.create("Ana", "P", email, encoder.encode("passwordvalida1"), Role.STUDENT, "v1");
@@ -5296,7 +5308,16 @@ public record PasswordChangeRequest(@NotBlank String currentPassword,
                                     @NotBlank String newPassword) { }
 ```
 
-Crear `TestResetSpy` análogo a `TestOtpSpy`, decorando `NotificationEventPublisher` para capturar el token del enlace.
+Crear `src/test/java/…/auth/TestResetSpy.java`, análogo a `TestOtpSpy`,
+decorando `NotificationEventPublisher` para capturar el token del enlace.
+
+**Captura solo `EmailType.RESET_PASSWORD`.** El token de activación viaja por
+el mismo mecanismo, pero es de otro lote: U17 tiene su propio
+`TestActivationSpy` y este spy no se ramifica para servirlo. Veinte líneas
+repetidas cuestan menos que un archivo que dos personas editan en paralelo.
+
+`Config` va `public static`, y el `@Import(TestResetSpy.Config.class)` sobre
+`PasswordResetIT` — no sobre `AbstractIntegrationTest`, por lo mismo que en T13.
 
 - [ ] **Step 5: Correr y verificar que pasa**
 
@@ -5614,6 +5635,36 @@ El catalogo emitible queda en un solo scope: users.profile.read."
 
 ### Task 17: Registro y activación de la cuenta por enlace
 
+> **Una base de datos, compartida por todas las clases de test, sin limpieza
+> entre ellas.** Los contenedores son singleton de JVM (ver
+> `AbstractIntegrationTest` y por qué tiene que ser así), y nadie borra filas al
+> terminar: lo que una clase commitea, la siguiente lo ve.
+>
+> Entonces **un email fijo en un fixture es una colisión esperando pasar.**
+> `EmailReuseIT` commitea `dup@utn.edu.ar` para probar el índice único de
+> `DEC-21`. Cualquier test que inserte esa misma dirección recibe un error de
+> clave duplicada que no esperaba o, peor, su **primer** alta falla con un 409
+> que parece un bug del código bajo prueba. Lo mismo aplica a
+> `uq_whitelist_request_pending`.
+>
+> Usá una dirección única por corrida en todo lo que insertes:
+>
+> ```java
+> String email = "alta-" + UUID.randomUUID() + "@utn.edu.ar";
+> ```
+>
+> Y no lo "arregles" poniéndole `@Transactional` al test: la mitad de lo que se
+> verifica acá es lo que hace **la base** al commitear — columnas generadas,
+> índices únicos, `SKIP LOCKED` — y una transacción que hace rollback nunca
+> llega ahí.
+>
+> **Un WARN de Hibernate no es una falla.** `HHH000247 ErrorCode: 1062` con
+> `Duplicate entry ... for key 'users.uq_users_active_email'` es exactamente lo
+> que `EmailReuseIT` provoca a propósito: Hibernate loguea el error del driver
+> mientras sube, el test lo atrapa y afirma sobre él. Si el build cierra en
+> verde, ese WARN es la prueba de que el índice funciona.
+
+
 **Files:**
 - Create: `src/main/java/…/users/services/RegistrationService.java`
 - Create: `src/main/java/…/users/controllers/RegistrationController.java`
@@ -5622,6 +5673,7 @@ El catalogo emitible queda en un solo scope: users.profile.read."
 - Create: `src/main/java/…/users/controllers/LegalController.java`
 - Test: `src/test/java/…/users/RegistrationIT.java`
 - Test: `src/test/java/…/users/ActivationLinkIT.java`
+- Create: `src/test/java/…/users/TestActivationSpy.java`
 
 **Interfaces:**
 - Consumes: `UserRepository` (T2), `EmailWhitelistRepository` (T3), `OtpService`+`EphemeralTokenService` (T11), `NotificationEventPublisher` (T7), `AccountEventPublisher`+`KafkaTopicsProperties` (T6), `PasswordPolicy` (T12).
@@ -5683,30 +5735,64 @@ public class LegalController {
 }
 ```
 
-- [ ] **Step 2: Extender el spy de mails para capturar el enlace de activación**
+- [ ] **Step 2: Escribir tu propio spy de mails**
 
-El enlace no se puede leer del mail: no hay servidor de correo. `TestResetSpy`
-(T15) ya intercepta el publisher para quedarse con el token del reset; el de
-activación es el mismo mecanismo, así que va en el mismo spy y no en uno nuevo.
+El enlace no se puede leer del mail: no hay servidor de correo. Se intercepta el
+publisher y se saca el token del `enlace` que se le pasó a la plantilla.
 
-En `src/test/java/…/auth/TestResetSpy.java`, agregar el segundo campo y la rama:
+`TestResetSpy` (T15) hace lo mismo con el token del reset, y **no lo vas a
+extender ni tocar: es de otro lote.** Un spy compartido sería un archivo que dos
+personas editan en paralelo, que es justo lo que el reparto por propiedad de
+archivos evita. Escribís el tuyo, en tu paquete.
+
+Crear `src/test/java/…/users/TestActivationSpy.java`:
 
 ```java
+package ar.edu.utn.frc.tup.p4.usersservice.users;
+
+import ar.edu.utn.frc.tup.p4.usersservice.shared.notifications.EmailType;
+import ar.edu.utn.frc.tup.p4.usersservice.shared.notifications.NotificationEventPublisher;
+import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.boot.test.context.TestConfiguration;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Primary;
+import org.springframework.transaction.annotation.Propagation;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.util.Map;
+
+/**
+ * Captura el token del enlace de activacion.
+ *
+ * Los tres spies declaran un @Primary (NotificationEventPublisher o
+ * SecondFactorProvider), asi que NINGUN test puede importar dos Config a la
+ * vez. No hace falta: ningun flujo necesita capturar el token de reset y el de
+ * activacion en el mismo test.
+ */
+public class TestActivationSpy extends NotificationEventPublisher {
+
+    private final NotificationEventPublisher real;
     private volatile String ultimoTokenActivacion;
+
+    // El constructor del padre no se usa: toda la logica la delega en real.
+    public TestActivationSpy(NotificationEventPublisher real) {
+        super(null, null, null);
+        this.real = real;
+    }
 
     @Override
     @Transactional(propagation = Propagation.MANDATORY)
     public void enviar(EmailType tipo, String to, Map<String, Object> vars) {
         real.enviar(tipo, to, vars);
-        if (tipo == EmailType.RESET_PASSWORD) {
-            this.ultimoToken = tokenDe(vars);
-        } else if (tipo == EmailType.ACTIVACION_CUENTA) {
-            // RF-USR-04: activation also travels by link, so the same spy
-            // serves both long-token flows.
+        if (tipo == EmailType.ACCOUNT_ACTIVATION) {
             this.ultimoTokenActivacion = tokenDe(vars);
         }
     }
 
+    /**
+     * El enlace se arma al renderizar y apunta al FRONTEND, no a la API
+     * (RF-USR-06): de ahi se saca el query param, no del cuerpo del mail.
+     */
     private static String tokenDe(Map<String, Object> vars) {
         String enlace = (String) vars.get("enlace");
         if (enlace == null) return null;
@@ -5715,7 +5801,24 @@ En `src/test/java/…/auth/TestResetSpy.java`, agregar el segundo campo y la ram
     }
 
     public String ultimoTokenActivacion() { return ultimoTokenActivacion; }
+
+    @TestConfiguration
+    public static class Config {
+        @Bean @Primary
+        TestActivationSpy activationSpy(
+                @Qualifier("notificationEventPublisher") NotificationEventPublisher real) {
+            return new TestActivationSpy(real);
+        }
+    }
+}
 ```
+
+El `@Qualifier` no es decorativo: sin él Spring resuelve la dependencia al
+`@Primary`, que es este mismo bean, y arranca con una referencia circular.
+
+El `@Import(TestActivationSpy.Config.class)` va sobre `RegistrationIT` y sobre
+`ActivationLinkIT`, **no** sobre `AbstractIntegrationTest`: esa clase es de la
+base y no registra dobles de test.
 
 - [ ] **Step 3: Escribir el test de activación (falla)** — criterio de DoD #26
 
@@ -5723,13 +5826,13 @@ En `src/test/java/…/auth/TestResetSpy.java`, agregar el segundo campo y la ram
 package ar.edu.utn.frc.tup.p4.usersservice.users;
 
 import ar.edu.utn.frc.tup.p4.usersservice.AbstractIntegrationTest;
-import ar.edu.utn.frc.tup.p4.usersservice.auth.TestResetSpy;
 import ar.edu.utn.frc.tup.p4.usersservice.shared.web.ApiException;
 import ar.edu.utn.frc.tup.p4.usersservice.users.enums.AccountStatus;
 import ar.edu.utn.frc.tup.p4.usersservice.users.repositories.UserRepository;
 import ar.edu.utn.frc.tup.p4.usersservice.users.services.RegistrationService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Import;
 import org.springframework.data.redis.core.StringRedisTemplate;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -5739,11 +5842,12 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  * RF-USR-04 - step 2: proving possession of the e-mail is a single-use LINK,
  * single use. This IT covers release criterion #26.
  */
+@Import(TestActivationSpy.Config.class)
 class ActivationLinkIT extends AbstractIntegrationTest {
 
     @Autowired RegistrationService registro;
     @Autowired UserRepository repo;
-    @Autowired TestResetSpy mailSpy;
+    @Autowired TestActivationSpy mailSpy;
     @Autowired StringRedisTemplate redis;
 
     private void altaAlumno(String email) {
@@ -5949,7 +6053,7 @@ public class RegistrationService {
             throw ApiException.validation(
                     "Hay que aceptar los Terminos y Condiciones vigentes (version " + tycVigente + ").");
         }
-        PasswordPolicy.validar(password);
+        PasswordPolicy.validate(password);
 
         String normalizado = email.toLowerCase(Locale.ROOT);
         if (repo.findByEmailAndDeletedAtIsNull(normalizado).isPresent()) {
@@ -5987,7 +6091,7 @@ public class RegistrationService {
         // person: if the link activated on a GET, the scanner would consume the
         // token of the whole cohort. The frontend screen only activates
         // when somebody presses the button, and no scanner does that.
-        mails.enviar(EmailType.ACTIVACION_CUENTA, u.getEmail(),
+        mails.enviar(EmailType.ACCOUNT_ACTIVATION, u.getEmail(),
                 Map.of("firstNames", u.getFirstNames(),
                        "enlace", urlFront + "/activate?token=" + token));
     }
@@ -6010,7 +6114,7 @@ public class RegistrationService {
             eventos.publicar(topics.studentRegistered(), "ALUMNO_REGISTRADO",
                     new PayloadAlumnoRegistrado(u.getId().toString(), u.getLegajo(),
                             leerCodigoInvitacion(u)));
-            mails.enviar(EmailType.SOLICITUD_PENDIENTE, u.getEmail(),
+            mails.enviar(EmailType.REQUEST_PENDING, u.getEmail(),
                     Map.of("firstNames", u.getFirstNames(),
                            "accountStatus", AccountStatus.PENDING_COURSE.name()));
         }
@@ -6155,7 +6259,7 @@ del entorno lo pisa donde haga falta.
 
 - [ ] **Step 7: Correr y verificar que pasan**
 
-Run: `mvn -q verify -Dit.test=RegistrationIT,ActivationLinkIT`
+Run: `mvn -q clean verify -Dit.test=RegistrationIT,ActivationLinkIT`
 Expected: PASS — 11 tests.
 
 Verificación manual contra el stack levantado, que es la que prueba lo que el
@@ -6716,7 +6820,7 @@ public void changeRole(UUID actorId, UUID objetivoId, Role nuevo) {
 
 @Transactional
 public UUID crear(String firstNames, String lastNames, String email, String password, Role role) {
-    PasswordPolicy.validar(password);
+    PasswordPolicy.validate(password);
     String normalizado = email.toLowerCase(Locale.ROOT);
     if (repo.findByEmailAndDeletedAtIsNull(normalizado).isPresent()) throw ApiException.duplicateEmail();
 
@@ -6930,7 +7034,7 @@ public class WhitelistService {
 
         usuarios.findAll().stream()
                 .filter(u -> u.getRole() == Role.ADMIN && u.getDeletedAt() == null)
-                .forEach(a -> mails.enviar(EmailType.WHITELIST_SOLICITUD, a.getEmail(),
+                .forEach(a -> mails.enviar(EmailType.WHITELIST_SUBMISSION, a.getEmail(),
                         Map.of("emailSolicitado", r.getRequestedEmail(), "reason", reason)));
         return r.getId();
     }
@@ -6955,7 +7059,7 @@ public class WhitelistService {
         solicitudes.save(r);
 
         usuarios.findByIdAndDeletedAtIsNull(r.getRequestedBy()).ifPresent(prof ->
-                mails.enviar(EmailType.WHITELIST_RESUELTA, prof.getEmail(), Map.of(
+                mails.enviar(EmailType.WHITELIST_DECISION, prof.getEmail(), Map.of(
                         "firstNames", prof.getFirstNames(),
                         "emailSolicitado", r.getRequestedEmail(),
                         "resultado", approve ? RequestStatus.APPROVED.name()
@@ -7299,7 +7403,7 @@ public class CourseValidationListener {
         repo.findByIdAndDeletedAtIsNull(userId).ifPresent(u -> {
             u.activateAfterCourseValidation();   // no-op si ya estaba ACTIVE
             repo.save(u);
-            mails.enviar(EmailType.HABILITACION_RESUELTA, u.getEmail(),
+            mails.enviar(EmailType.WHITELISTING_RESOLVED, u.getEmail(),
                     Map.of("firstNames", u.getFirstNames()));
         });
     }
@@ -7335,6 +7439,13 @@ DEC-09: resultado y cursoId se usan y se descartan. El dueno es Cursos."
 
 **Interfaces:**
 - Consumes: `UserRepository` (T2), `PasswordEncoder` (T5), `AccountEventPublisher` (T6), `NotificationEventPublisher` (T7), `PasswordPolicy` (T12).
+
+> **`AccountEventPublisher` y `NotificationEventPublisher` son del lote L3.** Si
+> todavia no estan en `main` cuando llegues acá, **no borres las llamadas en
+> silencio**: sin ellas RF-USR-01 se instala sin rastro de auditoria y las tres
+> vias de alerta de `DEC-32` quedan en una sola, y nada lo avisa. Dejá el test
+> escrito con `@Disabled("espera L3 · T6/T7")` y una linea en tu PR diciendo
+> que falta. Un requisito que desaparece sin dejar marca no se recupera nunca.
 - Produces: nada — las dos son herramientas de arranque y de emergencia.
 
 > **Los dos caminos por los que puede existir un ADMIN, y por qué hacen falta
@@ -7460,22 +7571,20 @@ public class AdminBootstrap implements ApplicationRunner {
         // repository is the same one in every installation.
         boolean generada = password.isBlank();
         String clara = generada ? generar() : password;
-        PasswordPolicy.validar(clara);   // una password floja falla al arrancar, no despues
+        PasswordPolicy.validate(clara);   // una password floja falla al arrancar, no despues
 
+        // 🔴 El evento va DENTRO de la misma transaccion que la fila: eso ES el
+        // outbox (DEC-45b). `publicar` esta anotado con propagation MANDATORY,
+        // asi que llamarlo afuera falla siempre y el alta de ADMIN queda sin
+        // rastro de auditoria — con un try/catch que lo tapa, que es peor.
         UUID id = tx.execute(s -> {
             User admin = User.createAdmin(firstNames, lastNames, email.toLowerCase(),
                     encoder.encode(clara), tycVigente);   // deja mustChangePassword = true
-            return repo.saveAndFlush(admin).getId();
-        });
-
-        // Auditing cannot prevent the ADMIN from existing: if Kafka is
-        // caido, se loguea y se sigue.
-        try {
+            UUID nuevoId = repo.saveAndFlush(admin).getId();
             eventos.publicar(topics.audit(), "ADMIN_INICIAL_CREADO",
-                    Map.of("adminId", String.valueOf(id)));
-        } catch (Exception e) {
-            log.warn("ADMIN_BOOTSTRAP: el evento de auditoria fallo — el ADMIN SI se creo", e);
-        }
+                    Map.of("adminId", String.valueOf(nuevoId)));
+            return nuevoId;
+        });
 
         if (generada) log.warn("""
 
@@ -7654,7 +7763,7 @@ public class AdminRecoveryCommand {
             // The message does NOT include what was received: not even an attempt leaks.
             throw new SecurityException("Secreto de instalacion invalido.");
         }
-        PasswordPolicy.validar(password);
+        PasswordPolicy.validate(password);
 
         // The creation goes in its own transaction, and the alerts OUTSIDE it.
         UUID id = tx.execute(status -> {
@@ -7686,7 +7795,7 @@ public class AdminRecoveryCommand {
                 repo.findAll().stream()
                         .filter(u -> u.getRole() == Role.ADMIN && u.getDeletedAt() == null
                                      && !u.getId().equals(adminId))
-                        .forEach(a -> mails.enviar(EmailType.ALERTA_BREAKGLASS, a.getEmail(),
+                        .forEach(a -> mails.enviar(EmailType.BREAKGLASS_ALERT, a.getEmail(),
                                 Map.of("adminId", adminId.toString())));
             });
         } catch (Exception e) {
@@ -7886,7 +7995,7 @@ Abrir `spec/SPEC-users-service.md` §19 y confirmar que cada criterio tiene su t
 | 21 | `TimestampIT` |
 | 22 | `EmailReuseIT` |
 | 23, 25 | `SingleSessionRefreshIT` |
-| 26 | `ActivationCodeIT`, `OtpServiceIT` |
+| 26 | `ActivationLinkIT`, `OtpServiceIT` |
 | 27 | `OnboardingWithoutAvatarIT` |
 | 28 | `WhitelistRequestIT` |
 | 29 | `AdminRecoveryCommandTest` |
