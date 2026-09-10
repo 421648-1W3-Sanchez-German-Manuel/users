@@ -56,10 +56,18 @@ public class OtpService {
         this.properties = properties;
     }
 
+    /**
+     * Pedir un codigo nuevo NO devuelve el presupuesto de intentos.
+     *
+     * Borrar attemptsKey aca dejaba el tope de 5 al alcance del que ataca:
+     * con la password en la mano hacia {login -> 5 intentos} en loop y el
+     * segundo factor no limitaba nada. El presupuesto es por ventana de una
+     * hora, no por desafio, y se devuelve solo al acertar: el script CONSUME
+     * borra el codigo y los intentos en la misma operacion atomica.
+     */
     public String generar(String key, Duration ttl) {
         String code = String.format("%06d", RANDOM.nextInt(1_000_000));
         redis.opsForValue().set(key, code, ttl);
-        redis.delete(attemptsKey(key));
         return code;
     }
 
