@@ -5,6 +5,7 @@ import ar.edu.utn.frc.tup.p4.usersservice.auth.store.TokenStore;
 import ar.edu.utn.frc.tup.p4.usersservice.shared.notifications.EmailType;
 import ar.edu.utn.frc.tup.p4.usersservice.shared.notifications.NotificationEventPublisher;
 import ar.edu.utn.frc.tup.p4.usersservice.shared.web.ApiException;
+import ar.edu.utn.frc.tup.p4.usersservice.users.PasswordPolicy;
 import ar.edu.utn.frc.tup.p4.usersservice.users.services.CredentialService;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
@@ -67,6 +68,13 @@ public class PasswordService {
     /** DEC-16 - half 2: CONFIRM. Its own path, its own body. */
     @Transactional
     public void confirmarReset(String token, String nueva) {
+        // La politica se valida ANTES de quemar el token. consumir() borra la
+        // clave de Redis, y Redis esta fuera del rollback de @Transactional:
+        // con el orden anterior, escribir una password que no pasa la politica
+        // devolvia 400 Y dejaba el enlace muerto. Habia que pedir otro mail
+        // por haberse equivocado al tipear.
+        PasswordPolicy.validate(nueva);
+
         UUID userId = efimeros.consumir("reset:" + token)   // un solo uso, atomico
                 .map(UUID::fromString)
                 .orElseThrow(ApiException::invalidCode);
