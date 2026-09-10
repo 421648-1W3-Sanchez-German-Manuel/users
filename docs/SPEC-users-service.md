@@ -122,7 +122,7 @@ El package **no se deriva**: lo fija literalmente el §12 del manifiesto.
 | `spring-boot-starter-data-jpa` | `users/` | Persistencia de `User`, `email_whitelist`, `service_clients`, `eventos_procesados` |
 | `com.mysql:mysql-connector-j` (runtime) | ambos | Driver de **MySQL 8.4 LTS** — base relacional única del microservicio (**DEC-20**) |
 | `spring-boot-starter-security` | ambos | **BCrypt** (`users/`) + el filtro de headers y `@PreAuthorize` (§7, §15). **No** se usa como resource server |
-| `spring-boot-starter-data-redis` | `auth/` | Refresh revocados, códigos 2FA, rate limit de login, código de activación (`DEC-33`), `session:{userId}` |
+| `spring-boot-starter-data-redis` | `auth/` | Refresh revocados, códigos 2FA, rate limit de login, token de activación (`DEC-33`), `session:{userId}` |
 | `spring-kafka` | ambos | Publicar mails armados, eventos con Cursos, auditoría (§13) |
 | `spring-boot-starter-thymeleaf` | `shared/` | Renderiza asunto + HTML de los mails — reemplaza lo que antes hacía Mailing |
 | `spring-cloud-starter-netflix-eureka-client` | ambos | Se registra en Eureka como `users-service` |
@@ -339,7 +339,7 @@ public interface EphemeralTokenService {
 }
 ```
 
-**Uso concreto:** `RegistrationService` (módulo `users/`) genera el **código de activación** y lo guarda como `activacion:{emailNormalizado}` con TTL de 30 min; al validarlo, lo **consume** (un solo uso). Ver **`DEC-33`** en §12.1.
+**Uso concreto:** `RegistrationService` (módulo `users/`) genera el **token de activación** de 256 bits y guarda su SHA-256 como `activacion:{sha256}` con TTL de 24 h, más el índice `activacion:email:{email}`; al validarlo, lo **consume** (un solo uso). Ver **`DEC-33`** en §12.1.
 
 > `token_activacion` **no vive en la base relacional**. Estaba como columna `String` temporal en `users` en revisiones anteriores, lo cual contradecía el principio "MySQL = durable, Redis = efímero". Se movió en v5.
 
@@ -414,18 +414,23 @@ El primero es grave por una razón específica de este dominio: **`RF-USR-05e` d
 
 #### c) Registro por `enum` para los mails — borra seis métodos casi iguales
 
-Hoy hay seis tipos de mail (§13.2), cada uno con su plantilla y su asunto. En vez de seis métodos que difieren en dos strings:
+Hoy hay ocho tipos de mail (§13.2), cada uno con su plantilla y su asunto. En vez de ocho métodos que difieren en dos strings:
 
 ```java
 public enum EmailType {
-    CODIGO_2FA          ("code-2fa.html",           "email.2fa.asunto"),
-    ACTIVACION_CUENTA   ("account-activation.html",    "email.activacion.asunto"),
-    RESET_PASSWORD      ("reset-password.html",       "email.reset.asunto"),
-    SOLICITUD_PENDIENTE ("whitelist-request-pending.html",  "email.request.asunto"),
-    HABILITACION_RESUELTA("whitelist-request-resolved.html","email.habilitacion.asunto"),
-    ALERTA_BREAKGLASS   ("breakglass-alert.html",    "email.breakglass.asunto");
-    // + eventType to notifications-service
+    TWO_FACTOR_CODE       ("code-2fa.html",                   "email.2fa.subject",          "EMAIL_2FA"),
+    ACCOUNT_ACTIVATION    ("account-activation.html",         "email.activation.subject",   "EMAIL_ACTIVACION_CUENTA"),
+    RESET_PASSWORD        ("reset-password.html",             "email.reset.subject",        "EMAIL_RESET_PASSWORD"),
+    REQUEST_PENDING       ("whitelist-request-pending.html",  "email.request.subject",      "EMAIL_SOLICITUD_PENDIENTE"),
+    WHITELISTING_RESOLVED ("whitelist-request-resolved.html", "email.whitelisting.subject", "EMAIL_HABILITACION_RESUELTA"),
+    BREAKGLASS_ALERT      ("breakglass-alert.html",           "email.breakglass.subject",   "EMAIL_ALERTA_BREAKGLASS"),
+    WHITELIST_SUBMISSION  ("whitelist-submission.html",       "email.wl.request.subject",   "EMAIL_WHITELIST_SOLICITUD"),
+    WHITELIST_DECISION    ("whitelist-decision.html",         "email.wl.resolved.subject",  "EMAIL_WHITELIST_RESUELTA");
 }
+
+> **Los nombres de constante y los accesores van en ingles** (`DEC-46`), igual
+> que el resto del codigo. El `eventType` NO: viaja a `notifications-service`,
+> que es de otro equipo, y ese contrato no es nuestro para renombrar.
 
 EmailTemplateService.render(EmailType tipo, Map<String, Object> vars) -> {asunto, html}
 ```
@@ -990,7 +995,8 @@ Sin el paso 2, un refresh token robado serviría hasta expirar.
 | `refresh:{jti}` | `{userId, sid, familyId}` · **DEC-22** | vida del refresh (7 d) | `auth/` | `auth/` |
 | `refresh:revocado:{jti}` | marca | vida restante del refresh | `auth/` | `auth/` |
 | `2fa:{userId}` | código | **5 min** | `auth/` | `auth/` |
-| `activacion:{emailNormalizado}` | `{userId, code, intentos}` · **DEC-33** | **30 min**, un solo uso | `users/` vía `EphemeralTokenService` | ídem |
+| `activacion:{sha256}` | `{userId}` · **DEC-33** — la clave es el hash del token, no el token | **24 h**, un solo uso | `users/` vía `EphemeralTokenService` | ídem |
+| `activacion:email:{emailNormalizado}` | el `{sha256}` vigente · **DEC-33** | **24 h** | `users/` — permite invalidar el enlace anterior al reenviar | ídem |
 | `reset:{token}` | `userId` | **15 min**, un solo uso | `auth/` | `auth/` |
 | `ratelimit:login:{email}` | contador · **DEC-24** | ventana · `TODO-09` | `auth/` | `auth/` |
 
@@ -1006,28 +1012,65 @@ Sin el paso 2, un refresh token robado serviría hasta expirar.
 
 ## 12. Códigos de un solo uso · 2FA y validación de email
 
-### 12.1 Un solo motor de OTP para dos flujos · **DEC-33**
+### 12.1 Un solo motor de OTP, y por qué la activación NO lo usa · **DEC-33**
 
-La validación de email **deja de ser un link** y pasa a ser un **código de 6 dígitos** que la persona escribe en pantalla, igual que el 2FA. Ningún manifiesto lo dice así — todos describen `GET /registro/activate?token=…` — así que es una desviación deliberada. 🔧 **Reflejar en `manifiesto-users-service` §12.1 y `manifiesto-flujos` §03.**
+`OtpService` genera, guarda, valida y limita intentos de un código de 6
+dígitos. Es **un solo componente** y su cliente es el **2FA del login**
+(`RF-NFR-02`). Antes había un mecanismo por flujo, con dos formatos, dos TTL
+y dos formas de fallar.
 
-**Qué se gana:**
+> **Corrección.** Una versión anterior de esta sección extendía el código de
+> 6 dígitos también a la **validación de email del alta**, reemplazando el
+> link. Eso queda **revertido**: la activación es por **enlace de un solo
+> uso**, como piden `RF-USR-04` y `RF-USR-06` y como describen todos los
+> manifiestos. El plan de implementación (`docs/plans/users-service.md`,
+> Task 17) es la referencia y siempre dijo enlace.
 
-- **Un solo motor.** `OtpService` genera, guarda, valida y limita intentos; el 2FA y la activación son dos clientes del mismo componente. Antes eran dos mecanismos con dos formatos, dos TTL y dos formas de fallar.
-- **Una sola pantalla.** El frontend reusa el mismo componente de "ingresá el código". El link obligaba a deep-linking y a que el frontend rutee un `token` de query string.
-- **El token deja de viajar en una URL**, donde queda en el historial del navegador, en el `Referer` y en los logs de cualquier proxy intermedio.
-- **El reenvío deja de ser opcional.** Con un link de 24 h, "reenviar" era una comodidad; con un código de 30 min es obligatorio. Eso **cierra `INC-20`**: sí hay endpoint de reenvío, y es el mismo patrón para los dos flujos.
+**Por qué el enlace gana, y no es por respetar el manifiesto:**
+
+- **Los escaneres de correo institucional visitan los enlaces** antes de
+  entregar el mail (Microsoft Safe Links, Proofpoint, Mimecast). Por eso el
+  enlace apunta al **frontend**, no a la API: si fuera un `GET` de la API que
+  consume el token, el escáner lo gastaría y la persona llegaría a "enlace ya
+  usado" **sin haber hecho clic** — sistemáticamente, y solo en las casillas
+  institucionales, que son las que exige `RF-USR-03`. Con un Gmail personal
+  anda perfecto, así que el bug no aparece en desarrollo.
+- **256 bits no son forzables**, así que el TTL de 24 h es cómodo y seguro sin
+  límite de intentos. Es al revés que el 2FA: 6 dígitos son ~20 bits, y por eso
+  vive 5 minutos con 5 intentos.
+- **El token se guarda hasheado** (`activacion:{sha256}`), más un índice
+  `activacion:email:{email}` para invalidar el anterior al reenviar. Sin el
+  índice, cada reenvío deja vivo el enlace viejo y terminan existiendo N.
+
+Lo que **sí** se conserva de la versión anterior: **el reenvío no es
+opcional**, y eso **cierra `INC-20`**. Hay endpoint de reenvío para los dos
+flujos.
+
+El residual conocido: el token viaja en la URL del **frontend**, o sea que
+queda en el historial del navegador de esa persona. Se acepta — es un solo
+uso, 24 h, y la alternativa cuesta una cohorte entera de activaciones
+quemadas por los escaneres.
 
 > ⚠️ **Precisión sobre "matamos dos pájaros de un tiro":** se comparte el **mecanismo**, no el **momento**. Validar el email prueba posesión de la casilla en el alta; el 2FA del login prueba posesión en cada ingreso. **La persona igual va a hacer 2FA en su primer login** — no se saltea. Lo que se unifica es el código, la pantalla y el componente, no los dos eventos.
 
-**Contrato del código de activación:**
+**Contrato del enlace de activación:**
 
 | | Valor | Por qué |
 |---|---|---|
-| Formato | 6 dígitos numéricos | igual que el 2FA; se dicta por teléfono sin ambigüedad |
-| TTL | **30 min** (antes 24–48 h con link) | 🔴 **obligatorio bajarlo.** 6 dígitos son ~20 bits: aceptable por 30 min con límite de intentos, temerario por 48 h |
-| Intentos | **5**, después se invalida el código y hay que pedir uno nuevo | sin esto, un código de 6 dígitos es forzable |
-| Clave Redis | `activacion:{emailNormalizado}` | el reenvío **pisa** el código anterior: nunca hay dos válidos a la vez |
-| Respuesta al error | `400` · `invalid-code`, **idéntica** para código incorrecto, vencido y email inexistente | anti-enumeración: no revela si esa dirección está registrada |
+| Formato | token de **256 bits**, URL-safe | no es forzable, así que no hace falta limitar intentos |
+| Dónde apunta | `${users.front-url}/activate?token=…` — **al frontend** | un `GET` de la API lo consumen los escaneres de correo institucional antes del clic |
+| TTL | **24 h**, un solo uso | con 256 bits el TTL largo no agrega riesgo |
+| Claves Redis | `activacion:{sha256}` + índice `activacion:email:{email}` | el hash para no guardar el token en claro; el índice para invalidar el anterior al reenviar |
+| Respuesta al error | `400` · `invalid-token`, **idéntica** para token incorrecto, vencido y ya usado | anti-enumeración: no revela si esa dirección está registrada |
+
+**Contrato del código de 2FA** (el único cliente de `OtpService`):
+
+| | Valor | Por qué |
+|---|---|---|
+| Formato | 6 dígitos numéricos | se dicta por teléfono sin ambigüedad |
+| TTL | **5 min** | ~20 bits: seguro solo si vive poco y con tope de intentos |
+| Intentos | **5**, después se invalida y hay que pedir otro | sin esto, 6 dígitos son forzables |
+| Respuesta al error | `400` · `invalid-code`, **idéntica** en todos los casos | anti-enumeración |
 | Reenvío | rate-limitado por email, misma respuesta exista o no la cuenta | mismo criterio que el reset de password |
 
 **Lo que NO cambia a código: el reset de password.** Sigue siendo un **token largo por link** (`DEC-16`), y la asimetría es a propósito: activar un email mueve una cuenta de `PENDING_EMAIL` a `PENDING_COURSE` y **no le da acceso a nadie** (sigue haciendo falta la contraseña); adivinar un reset de password **es tomar la cuenta**. Seis dígitos no alcanzan para custodiar eso. Distinto impacto, distinto mecanismo.
@@ -1119,7 +1162,7 @@ public record EventEnvelope<T>(
 | `eventType` | Cuándo se dispara | Plantilla | Payload |
 |---|---|---|---|
 | `EMAIL_2FA` | fase 1 del login, tras validar credenciales | `code-2fa.html` | `{to, asunto, html}` |
-| `EMAIL_ACTIVACION_CUENTA` | alta de STUDENT o PROFESSOR, al crear la cuenta **y en cada reenvío** | `account-activation.html` — **código, ya no link** (`DEC-33`) | ídem |
+| `EMAIL_ACTIVACION_CUENTA` | alta de STUDENT o PROFESSOR, al crear la cuenta **y en cada reenvío** | `account-activation.html` — **enlace de un solo uso** al frontend (`DEC-33`) | ídem |
 | `EMAIL_ALERTA_BREAKGLASS` | **NUEVO · DEC-32** · uso del comando de recuperación de ADMIN | `breakglass-alert.html` | ídem, a todos los ADMIN activos |
 | `EMAIL_RESET_PASSWORD` | pedido de recuperación | `reset-password.html` | ídem |
 | `EMAIL_SOLICITUD_PENDIENTE` | **NUEVO · DEC-11** · al pasar a `PENDING_COURSE` | `whitelist-request-pending.html` | ídem |
@@ -1299,9 +1342,9 @@ public class AuthController { … }
 | `POST /api/users/public/auth/password/reset/confirm` | `auth/` | **confirmar** — consume el token de 1 uso y cambia la password · **DEC-16** |
 | `POST /api/users/public/registration/student` | `users/` | Alta de STUDENT (dominio institucional + código de invitación) |
 | `POST /api/users/public/registration/professor` | `users/` | Alta de PROFESSOR (contra whitelist) |
-| `POST /api/users/public/registration/validar-email` | `users/` | **DEC-33** · activación por **código** de 6 dígitos. Reemplaza el link |
-| `POST /api/users/public/registration/reenviar-code` | `users/` | **DEC-33** · reenvía el código de activación. Cierra INC-20 |
-| `POST /api/users/public/auth/2fa/reenviar` | `auth/` | **DEC-33** · reenvía el código de 2FA. Mismo patrón. Cierra INC-20 |
+| `POST /api/users/public/registration/activate` | `users/` | **DEC-33** · activación por **enlace** de un solo uso; el body lleva el `token` que la pantalla del frontend saca del query string |
+| `POST /api/users/public/registration/resend-activation` | `users/` | **DEC-33** · reenvía el enlace de activación e **invalida el anterior**. Cierra INC-20 |
+| `POST /api/users/public/auth/2fa/resend` | `auth/` | **DEC-33** · reenvía el código de 2FA. Cierra INC-20 |
 | `GET /api/users/public/legal/terms` | `users/` | **DEC-31** · texto vigente de T&C, legible sin cuenta |
 | `GET /.well-known/jwks.json` | `auth/` | Claves públicas · **única excepción real a la convención** |
 
@@ -1575,7 +1618,7 @@ Los dos flujos (cambio voluntario y recuperación por olvido) **terminan revocan
 | **DEC-30** | MinIO **fuera del sprint**; `avatarRef` pasa a **opcional** en el onboarding | §6.1, §8. Sin esto el gate 3 encerraba a todo usuario nuevo en `403` |
 | **DEC-31** | T&C: texto **mock versionado** en el repo + `GET /api/users/public/legal/terms` | §16.6. Cierra TODO-14 |
 | **DEC-32** | Alerta de break-glass por **tres vías ya existentes**: log `ERROR`, evento de auditoría, mail a los ADMIN activos | §16.4. Cierra TODO-13 |
-| **DEC-33** | La validación de email pasa de **link** a **código de 6 dígitos**, mismo motor OTP que el 2FA, con TTL 30 min, 5 intentos y endpoint de reenvío | §12.1. Cierra INC-20. ⚠️ **desviación de los manifiestos** |
+| **DEC-33** | **Un solo motor de OTP, y su único cliente es el 2FA.** La activación de cuenta sigue siendo por **enlace** de 256 bits, un solo uso, 24 h, apuntando al **frontend** — no a la API, porque los escaneres de correo institucional consumen los enlaces antes del clic. Los dos flujos tienen endpoint de reenvío | §12.1. Cierra INC-20. Sigue a los manifiestos: **ya no hay desviación** |
 | **DEC-34** | Regla de costuras externas: definimos e implementamos nuestra mitad; el nombre del tópico es una property | §13.2b, §13.4b. Reduce TODO-10 y TODO-11 a configuración |
 | **DEC-35** | Spring Cloud **2025.1.3 "Oakwood"** con Boot 4.1.1 — **verificado** contra la matriz oficial | §2. Cierra TODO-01 |
 | **DEC-36** | `GET /api/users/profile/{id}` acepta **token de persona además de `MS`** | §18/INC-10, §15. Cierra INC-10 |
@@ -1984,7 +2027,7 @@ Del manifiesto §12.2, más lo que agregan las decisiones de §18.0.
 | 23 | **(DEC-22)** Con el dispositivo A superado por un login de B, `POST /auth/refresh` de A devuelve `401` **y deja revocada toda la familia** de A; el refresh de B sigue funcionando y su access nuevo mantiene el mismo `sid` | `SingleSessionRefreshIT` con Testcontainers Redis |
 | 24 | **(DEC-23)** `deactivate()` borra `session:{userId}`; el access token de esa persona, todavía sin expirar, deja de servir en el request siguiente | `DeactivationEndsSessionIT` |
 | 25 | **(DEC-23)** El access de una cuenta en `PENDING_COURSE` lleva `est: "PENDING_COURSE"`; tras `activateAfterCourseValidation()`, un `/auth/refresh` devuelve un access con `est: "ACTIVE"` **sin re-login** | `AccountStatusInTokenIT` |
-| 26 | **(DEC-33)** Un código de activación vencido, uno incorrecto y un email inexistente devuelven **la misma respuesta**; al 5º intento fallido el código se invalida y hace falta reenviar | `ActivationCodeIT` |
+| 26 | **(DEC-33)** Un enlace de activación vencido, uno inválido y uno ya usado devuelven **la misma respuesta**; reenviar **invalida el enlace anterior**, así que nunca hay dos válidos a la vez | `ActivationLinkIT` |
 | 27 | **(DEC-30)** `PATCH /api/users/me/onboarding` **sin `avatarRef`** cierra el gate 3 y la persona accede a la plataforma | `OnboardingWithoutAvatarIT` — es el test que evita encerrar a todo usuario nuevo |
 | 28 | **(DEC-29)** Aprobar una solicitud marca `APPROVED` **e** inserta en `email_whitelist` en la misma transacción; si falla el insert, la solicitud sigue `PENDING` | `WhitelistRequestIT` |
 | 29 | **(DEC-32)** El comando de break-glass crea el ADMIN **aunque Kafka y el mail fallen**, y deja el log `ERROR` igual | `AdminRecoveryCommandTest` con los publishers rotos a propósito |
