@@ -27,6 +27,15 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  */
 class SingleSessionRefreshIT extends AbstractIntegrationTest {
 
+    /**
+     * MySQL y Redis son singletons compartidos SIN cleanup entre clases
+     * (AbstractIntegrationTest). Con direcciones fijas, cualquier otro lote
+     * que tome una de estas, o una corrida repetida en la misma JVM, produce
+     * un 409 de clave duplicada en el INSERT del fixture y se lee como falla
+     * del codigo bajo prueba.
+     */
+    private static final String SUF = "-" + UUID.randomUUID() + "@utn.edu.ar";
+
     @Autowired AuthService auth;
     @Autowired TokenStore store;
     @Autowired UserRepository repo;
@@ -40,7 +49,7 @@ class SingleSessionRefreshIT extends AbstractIntegrationTest {
 
     @Test
     void el_refresh_NO_genera_sid_nuevo_ni_escribe_redis() throws Exception {
-        UUID id = crear("ref1@utn.edu.ar");
+        UUID id = crear("ref1" + SUF);
         TokenResponse t1 = auth.emitirParDeTokens(id);
         String sid = store.sidDe(id).orElseThrow();
 
@@ -54,7 +63,7 @@ class SingleSessionRefreshIT extends AbstractIntegrationTest {
     @Test
     void el_dispositivo_SUPERADO_recibe_401_y_su_familia_queda_revocada() {
         // A logueado, B se loguea, A intenta refrescar.
-        UUID id = crear("ref2@utn.edu.ar");
+        UUID id = crear("ref2" + SUF);
         TokenResponse deA = auth.emitirParDeTokens(id);
         TokenResponse deB = auth.emitirParDeTokens(id);   // pisa la sesion
 
@@ -67,7 +76,7 @@ class SingleSessionRefreshIT extends AbstractIntegrationTest {
 
     @Test
     void reusar_un_refresh_ya_rotado_revoca_TODA_la_familia() {
-        UUID id = crear("ref3@utn.edu.ar");
+        UUID id = crear("ref3" + SUF);
         TokenResponse t1 = auth.emitirParDeTokens(id);
         TokenResponse t2 = auth.refrescar(t1.refreshToken());   // t1 queda rotado
 
@@ -81,7 +90,7 @@ class SingleSessionRefreshIT extends AbstractIntegrationTest {
     void el_refresh_RELEE_el_estado_de_la_base() throws Exception {
         // DEC-23: this is what makes refreshing the propagation mechanism
         // rapida cuando la cuenta gana acceso.
-        User u = User.create("A", "A", "ref4@utn.edu.ar",
+        User u = User.create("A", "A", "ref4" + SUF,
                 encoder.encode("passwordvalida1"), Role.STUDENT, "v1");
         u.activate();                       // PENDING_COURSE
         repo.saveAndFlush(u);

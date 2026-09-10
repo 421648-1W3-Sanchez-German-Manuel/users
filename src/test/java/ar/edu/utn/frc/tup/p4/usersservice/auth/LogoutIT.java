@@ -20,6 +20,15 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 /** DEC-02 · el logout borra session:{userId}: corta el access al instante. */
 class LogoutIT extends AbstractIntegrationTest {
 
+    /**
+     * MySQL y Redis son singletons compartidos SIN cleanup entre clases
+     * (AbstractIntegrationTest). Con direcciones fijas, cualquier otro lote
+     * que tome una de estas, o una corrida repetida en la misma JVM, produce
+     * un 409 de clave duplicada en el INSERT del fixture y se lee como falla
+     * del codigo bajo prueba.
+     */
+    private static final String SUF = "-" + UUID.randomUUID() + "@utn.edu.ar";
+
     @Autowired AuthService auth;
     @Autowired TokenStore store;
     @Autowired UserRepository repo;
@@ -27,7 +36,7 @@ class LogoutIT extends AbstractIntegrationTest {
 
     @Test
     void el_logout_borra_la_key_de_sesion() {
-        User u = User.create("A", "A", "out@utn.edu.ar",
+        User u = User.create("A", "A", "out" + SUF,
                 encoder.encode("passwordvalida1"), Role.STUDENT, "v1");
         u.forceStatusForTest(AccountStatus.ACTIVE);
         UUID id = repo.saveAndFlush(u).getId();

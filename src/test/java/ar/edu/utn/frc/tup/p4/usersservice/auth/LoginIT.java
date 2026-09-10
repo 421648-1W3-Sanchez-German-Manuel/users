@@ -16,6 +16,7 @@ import org.springframework.context.annotation.Import;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
@@ -24,6 +25,15 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  */
 @Import(TestOtpSpy.Config.class)   // el spy del Step 5, solo para este test
 class LoginIT extends AbstractIntegrationTest {
+
+    /**
+     * MySQL y Redis son singletons compartidos SIN cleanup entre clases
+     * (AbstractIntegrationTest). Con direcciones fijas, cualquier otro lote
+     * que tome una de estas, o una corrida repetida en la misma JVM, produce
+     * un 409 de clave duplicada en el INSERT del fixture y se lee como falla
+     * del codigo bajo prueba.
+     */
+    private static final String SUF = "-" + UUID.randomUUID() + "@utn.edu.ar";
 
     @Autowired AuthService auth;
     @Autowired UserRepository repo;
@@ -40,8 +50,8 @@ class LoginIT extends AbstractIntegrationTest {
 
     @Test
     void la_fase_1_NO_devuelve_tokens() throws Exception {
-        crearActivo("f1@utn.edu.ar", "passwordvalida1");
-        var r = auth.login("f1@utn.edu.ar", "passwordvalida1");
+        crearActivo("f1" + SUF, "passwordvalida1");
+        var r = auth.login("f1" + SUF, "passwordvalida1");
         assertThat(r.challengeId()).isNotBlank();
         // Si la fase 1 devolviera tokens, el 2FA seria decorativo.
         assertThat(r.toString()).doesNotContain("eyJ");
@@ -53,15 +63,15 @@ class LoginIT extends AbstractIntegrationTest {
         // -> event published". Without this assert, the login could issue
         // perfect tokens and never send the code: green in the tests,
         // roto para el usuario.
-        crearActivo("f2a@utn.edu.ar", "passwordvalida1");
+        crearActivo("f2a" + SUF, "passwordvalida1");
         long antes = outbox.count();
 
-        auth.login("f2a@utn.edu.ar", "passwordvalida1");
+        auth.login("f2a" + SUF, "passwordvalida1");
 
         assertThat(outbox.count()).isGreaterThan(antes);
         assertThat(outbox.findAll()).anySatisfy(e -> {
             assertThat(e.getPayload()).contains("EMAIL_2FA");
-            assertThat(e.getPayload()).contains("f2a@utn.edu.ar");
+            assertThat(e.getPayload()).contains("f2a" + SUF);
             // The mail goes out ALREADY BUILT: subject + html, not a templateId.
             assertThat(e.getPayload()).contains("\"asunto\"").contains("\"html\"");
             // And the code NEVER appears in the audit event or in a log.
@@ -71,8 +81,8 @@ class LoginIT extends AbstractIntegrationTest {
 
     @Test
     void la_fase_2_con_el_codigo_correcto_emite_los_dos_tokens() throws Exception {
-        User u = crearActivo("f2@utn.edu.ar", "passwordvalida1");
-        var desafio = auth.login("f2@utn.edu.ar", "passwordvalida1");
+        User u = crearActivo("f2" + SUF, "passwordvalida1");
+        var desafio = auth.login("f2" + SUF, "passwordvalida1");
 
         var tokens = auth.verificarDosFa(desafio.challengeId(), otpSpy.ultimoCodigo());
 
@@ -88,13 +98,13 @@ class LoginIT extends AbstractIntegrationTest {
 
     @Test
     void un_segundo_login_pisa_la_sesion_del_primero() throws Exception {
-        User u = crearActivo("f3@utn.edu.ar", "passwordvalida1");
+        User u = crearActivo("f3" + SUF, "passwordvalida1");
 
-        var d1 = auth.login("f3@utn.edu.ar", "passwordvalida1");
+        var d1 = auth.login("f3" + SUF, "passwordvalida1");
         var t1 = auth.verificarDosFa(d1.challengeId(), otpSpy.ultimoCodigo());
         String sid1 = SignedJWT.parse(t1.accessToken()).getJWTClaimsSet().getStringClaim("sid");
 
-        var d2 = auth.login("f3@utn.edu.ar", "passwordvalida1");
+        var d2 = auth.login("f3" + SUF, "passwordvalida1");
         var t2 = auth.verificarDosFa(d2.challengeId(), otpSpy.ultimoCodigo());
         String sid2 = SignedJWT.parse(t2.accessToken()).getJWTClaimsSet().getStringClaim("sid");
 
@@ -108,12 +118,12 @@ class LoginIT extends AbstractIntegrationTest {
         // of the token. The token is how the person queries
         // GET /me and finds out what is missing. The set of features
         // alcanzables es vacio (DEC-23, gate grueso en el Gateway).
-        User u = User.create("B", "B", "pend@utn.edu.ar",
+        User u = User.create("B", "B", "pend" + SUF,
                 encoder.encode("passwordvalida1"), Role.STUDENT, "v1");
         u.activate();                     // -> PENDING_COURSE
         repo.saveAndFlush(u);
 
-        var d = auth.login("pend@utn.edu.ar", "passwordvalida1");
+        var d = auth.login("pend" + SUF, "passwordvalida1");
         var t = auth.verificarDosFa(d.challengeId(), otpSpy.ultimoCodigo());
 
         assertThat(SignedJWT.parse(t.accessToken()).getJWTClaimsSet().getStringClaim("est"))
@@ -122,16 +132,16 @@ class LoginIT extends AbstractIntegrationTest {
 
     @Test
     void password_incorrecta_y_email_inexistente_dan_el_MISMO_error() {
-        crearActivo("f4@utn.edu.ar", "passwordvalida1");
-        String m1 = capturar(() -> auth.login("f4@utn.edu.ar", "otracosa1234"));
-        String m2 = capturar(() -> auth.login("nadie@utn.edu.ar", "otracosa1234"));
+        crearActivo("f4" + SUF, "passwordvalida1");
+        String m1 = capturar(() -> auth.login("f4" + SUF, "otracosa1234"));
+        String m2 = capturar(() -> auth.login("nadie" + SUF, "otracosa1234"));
         assertThat(m1).isEqualTo(m2);
     }
 
     @Test
     void un_codigo_2fa_incorrecto_no_emite_tokens() {
-        crearActivo("f5@utn.edu.ar", "passwordvalida1");
-        var d = auth.login("f5@utn.edu.ar", "passwordvalida1");
+        crearActivo("f5" + SUF, "passwordvalida1");
+        var d = auth.login("f5" + SUF, "passwordvalida1");
         assertThatThrownBy(() -> auth.verificarDosFa(d.challengeId(), "000000"))
                 .isInstanceOf(ApiException.class);
     }
