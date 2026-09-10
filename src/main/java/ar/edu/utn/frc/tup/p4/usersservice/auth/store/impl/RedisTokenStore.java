@@ -3,9 +3,11 @@ package ar.edu.utn.frc.tup.p4.usersservice.auth.store.impl;
 import ar.edu.utn.frc.tup.p4.usersservice.auth.store.TokenStore;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.data.redis.core.script.DefaultRedisScript;
 import org.springframework.stereotype.Component;
 
 import java.time.Duration;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -16,6 +18,20 @@ public class RedisTokenStore implements TokenStore {
     private static final String REFRESH_PREFIX = "refresh:";
     private static final String REVOKED_FAMILY_PREFIX = "refresh:familia-revocada:";
     private static final String LOGIN_FAILURE_PREFIX = "ratelimit:login:";
+
+    /**
+     * Atomically INCR and set TTL on the first failure so a crash between the
+     * two commands cannot leave a counter without expiry.
+     */
+    private static final DefaultRedisScript<Long> INCR_WITH_TTL = new DefaultRedisScript<>(
+            """
+            local n = redis.call('INCR', KEYS[1])
+            if n == 1 then
+              redis.call('EXPIRE', KEYS[1], tonumber(ARGV[1]))
+            end
+            return n
+            """,
+            Long.class);
 
     private final StringRedisTemplate redis;
     private final ObjectMapper mapper;
@@ -71,10 +87,10 @@ public class RedisTokenStore implements TokenStore {
 
     @Override
     public int incrementarFallos(String key, Duration ventana) {
-        Long failures = redis.opsForValue().increment(LOGIN_FAILURE_PREFIX + key);
-        if (failures != null && failures == 1L) {
-            redis.expire(LOGIN_FAILURE_PREFIX + key, ventana);
-        }
+        Long failures = redis.execute(
+                INCR_WITH_TTL,
+                List.of(LOGIN_FAILURE_PREFIX + key),
+                String.valueOf(ventana.toSeconds()));
         return failures == null ? 0 : failures.intValue();
     }
 
