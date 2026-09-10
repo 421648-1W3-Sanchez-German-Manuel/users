@@ -6,6 +6,7 @@ import ar.edu.utn.frc.tup.p4.usersservice.auth.services.AuthService;
 import ar.edu.utn.frc.tup.p4.usersservice.auth.services.PasswordService;
 import ar.edu.utn.frc.tup.p4.usersservice.shared.gates.SkipAccountGate;
 import ar.edu.utn.frc.tup.p4.usersservice.shared.security.GatewayPrincipal;
+import ar.edu.utn.frc.tup.p4.usersservice.shared.web.ApiException;
 import jakarta.validation.Valid;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
@@ -32,6 +33,7 @@ public class AuthPrivateController {
                       SkipAccountGate.Gate.ONBOARDING})
     public void logout(@AuthenticationPrincipal GatewayPrincipal p,
                        @RequestBody(required = false) RefreshRequest req) {
+        exigirPersona(p);
         auth.logout(p.id(), req == null ? null : req.refreshToken());
     }
 
@@ -46,6 +48,20 @@ public class AuthPrivateController {
     @SkipAccountGate({SkipAccountGate.Gate.PASSWORD, SkipAccountGate.Gate.ONBOARDING})
     public void cambiar(@AuthenticationPrincipal GatewayPrincipal p,
                         @Valid @RequestBody PasswordChangeRequest req) {
+        exigirPersona(p);
         passwordService.cambiar(p.id(), req.currentPassword(), req.newPassword());
+    }
+
+    /**
+     * Estas dos rutas operan sobre la sesion de una PERSONA. Un principal de
+     * tipo "service" llega con id() == null (GatewayIdentityFilter), y el
+     * AccountGateInterceptor lo deja pasar porque los gates son de cuentas.
+     * Sin este chequeo, un token de servicio entra igual y termina operando
+     * sobre la clave session:null.
+     *
+     * 403 y no 401: no falta identidad, sobra. Un 401 mandaria al login (regla 3).
+     */
+    private void exigirPersona(GatewayPrincipal p) {
+        if (p == null || !p.isPerson() || p.id() == null) throw ApiException.accessDenied();
     }
 }

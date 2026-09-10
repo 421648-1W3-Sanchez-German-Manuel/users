@@ -138,12 +138,22 @@ public class AuthService {
         return emitirConSid(data.userId(), data.sid(), data.familyId());
     }
 
-    /** DEC-02 + DEC-22: uno de los dos unicos borrados de session:{userId}. */
+    /**
+     * DEC-02 + DEC-22: uno de los dos unicos borrados de session:{userId}.
+     *
+     * El refresh que llega en el body tiene que ser DEL QUE LLAMA. Sin ese
+     * filtro, cualquiera que conozca el jti de otro le mata la familia entera
+     * de tokens desde su propia sesion: un logout ajeno a pedido.
+     */
     @Transactional
     public void logout(UUID userId, String refreshJti) {
         if (refreshJti != null) {
-            store.refresh(refreshJti).ifPresent(d -> store.revocarFamilia(d.familyId()));
-            store.revocarRefresh(refreshJti);
+            store.refresh(refreshJti)
+                    .filter(d -> d.userId().equals(userId))
+                    .ifPresent(d -> {
+                        store.revocarFamilia(d.familyId());
+                        store.revocarRefresh(refreshJti);
+                    });
         }
         store.borrarSesion(userId);
     }
