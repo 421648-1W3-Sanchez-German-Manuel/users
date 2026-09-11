@@ -67,7 +67,7 @@ public class UserController {
     @PreAuthorize("hasRole('ADMIN')")
     public Map<String, String> crear(@Valid @RequestBody CreateUserRequest r) {
         return Map.of("id", users.crear(r.firstNames(), r.lastNames(), r.email(),
-                r.password(), r.role()).toString());
+                r.password()).toString());
     }
 
     @DeleteMapping("/{id}")
