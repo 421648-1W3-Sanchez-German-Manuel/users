@@ -40,7 +40,7 @@ public class WhitelistService {
     }
 
     @Transactional(readOnly = true)
-    public List<EmailWhitelist> listar() { return lista.findAllByDeletedAtIsNull(); }
+    public List<EmailWhitelist> listar() { return lista.findAllByDeletedAtIsNullOrderByCreatedAtDesc(); }
 
     /** DEC-29 · the ADMIN's review queue, newest first. */
     @Transactional(readOnly = true)

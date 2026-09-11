@@ -8,4 +8,5 @@ import java.util.UUID;
 public interface EmailWhitelistRepository extends JpaRepository<EmailWhitelist, UUID> {
     boolean existsByEmailAndDeletedAtIsNull(String email);
     List<EmailWhitelist> findAllByDeletedAtIsNull();
+    List<EmailWhitelist> findAllByDeletedAtIsNullOrderByCreatedAtDesc();
 }

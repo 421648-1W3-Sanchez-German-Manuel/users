@@ -30,7 +30,13 @@ public class WhitelistController {
     @PreAuthorize("hasRole('ADMIN')")
     public List<Map<String, String>> listar() {
         return whitelist.listar().stream()
-                .map(e -> Map.of("id", e.getId().toString(), "email", e.getEmail())).toList();
+                .map(e -> {
+                    Map<String, String> dto = new HashMap<>();
+                    dto.put("id", e.getId().toString());
+                    dto.put("email", e.getEmail());
+                    if (e.getCreatedAt() != null) dto.put("createdAt", e.getCreatedAt().toString());
+                    return dto;
+                }).toList();
     }
 
     @DeleteMapping("/{id}")

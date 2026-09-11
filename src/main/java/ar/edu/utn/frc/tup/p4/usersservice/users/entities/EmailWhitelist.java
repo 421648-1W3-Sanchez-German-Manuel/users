@@ -38,4 +38,5 @@ public class EmailWhitelist {
 
     public UUID getId() { return id; }
     public String getEmail() { return email; }
+    public Instant getCreatedAt() { return createdAt; }
 }
