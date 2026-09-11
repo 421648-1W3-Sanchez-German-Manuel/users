@@ -60,6 +60,12 @@ eureka:
       defaultZone: ${EUREKA_URL:http://localhost:8761/eureka/}
     register-with-eureka: true
     fetch-registry: false        # ONLY the gateway has true
+    # Manifiesto del Gateway §10. El heartbeat solo dice "el proceso vive". Con
+    # esto lo que Eureka publica es el readiness de Actuator, asi que una
+    # instancia sin MySQL o sin Redis sale del balanceo en vez de recibir
+    # trafico y contestar 500. El gateway ahi devuelve 503 + Retry-After.
+    healthcheck:
+      enabled: true
   instance:
     prefer-ip-address: true
 
