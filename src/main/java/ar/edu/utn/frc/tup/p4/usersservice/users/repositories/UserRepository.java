@@ -8,6 +8,7 @@ import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -16,6 +17,9 @@ public interface UserRepository extends JpaRepository<User, UUID> {
     Optional<User> findByEmailAndDeletedAtIsNull(String email);
 
     Optional<User> findByIdAndDeletedAtIsNull(UUID id);
+
+    /** Active accounts, newest first. Named query: avoids spring-data's count-then-paged method detection. */
+    List<User> findByDeletedAtIsNullOrderByCreatedAtDesc();
 
     long countByRoleAndDeletedAtIsNull(Role role);
 

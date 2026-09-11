@@ -12,6 +12,7 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.List;
 import java.util.Locale;
 import java.util.UUID;
 
@@ -45,6 +46,16 @@ public class UserService {
         User u = buscar(id);
         return new ProfileResponse(u.getId().toString(), u.getFirstNames(), u.getLastNames(),
                 u.getGithubUsername(), u.getAvatarRef());
+    }
+
+    /** ADMIN directory: active accounts, newest first. */
+    @Transactional(readOnly = true)
+    public List<UserListItemResponse> listar() {
+        return repo.findByDeletedAtIsNullOrderByCreatedAtDesc().stream()
+                .map(u -> new UserListItemResponse(u.getId().toString(), u.getFirstNames(),
+                        u.getLastNames(), u.getLegajo(), u.getEmail(), u.getRole(),
+                        u.getAccountStatus(), u.getCreatedAt()))
+                .toList();
     }
 
     /** DEC-30 - avatarRef may be null while object storage is out of this sprint. */

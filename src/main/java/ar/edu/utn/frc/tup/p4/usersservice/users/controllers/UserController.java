@@ -9,6 +9,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
@@ -49,6 +50,13 @@ public class UserController {
     @GetMapping("/profile/{id}")
     public ProfileResponse perfil(@PathVariable UUID id) {
         return users.perfil(id);
+    }
+
+    /** ADMIN directory. Only active accounts, newest first. */
+    @GetMapping
+    @PreAuthorize("hasRole('ADMIN')")
+    public List<UserListItemResponse> listar() {
+        return users.listar();
     }
 
     /**

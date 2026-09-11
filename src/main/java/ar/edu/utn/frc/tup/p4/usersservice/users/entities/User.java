@@ -150,4 +150,5 @@ private Role role;
     public boolean isFirstLogin() { return firstLogin; }
     public boolean isGuidedTourCompleted() { return guidedTourCompleted; }
     public Instant getDeletedAt() { return deletedAt; }
+    public Instant getCreatedAt() { return createdAt; }
 }
