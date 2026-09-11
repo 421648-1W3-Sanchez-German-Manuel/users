@@ -108,15 +108,14 @@ public class UserService {
         repo.save(objetivo);
     }
 
+    /** RF-ROL-03 - este alta manual es solo para ADMIN; ver DTO. */
     @Transactional
-    public UUID crear(String firstNames, String lastNames, String email, String password, Role role) {
+    public UUID crear(String firstNames, String lastNames, String email, String password) {
         PasswordPolicy.validate(password);
         String normalizado = email.toLowerCase(Locale.ROOT);
         if (repo.findByEmailAndDeletedAtIsNull(normalizado).isPresent()) throw ApiException.duplicateEmail();
 
-        User u = role == Role.ADMIN
-                ? User.createAdmin(firstNames, lastNames, normalizado, encoder.encode(password), tycVigente)
-                : User.create(firstNames, lastNames, normalizado, encoder.encode(password), role, tycVigente);
+        User u = User.createAdmin(firstNames, lastNames, normalizado, encoder.encode(password), tycVigente);
         repo.saveAndFlush(u);
         return u.getId();
     }
