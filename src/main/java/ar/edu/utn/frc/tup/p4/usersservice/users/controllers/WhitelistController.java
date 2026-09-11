@@ -2,6 +2,7 @@ package ar.edu.utn.frc.tup.p4.usersservice.users.controllers;
 
 import ar.edu.utn.frc.tup.p4.usersservice.shared.security.GatewayPrincipal;
 import ar.edu.utn.frc.tup.p4.usersservice.users.dto.*;
+import ar.edu.utn.frc.tup.p4.usersservice.users.entities.WhitelistRequest;
 import ar.edu.utn.frc.tup.p4.usersservice.users.services.WhitelistService;
 import jakarta.validation.Valid;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -41,6 +42,25 @@ public class WhitelistController {
     public Map<String, String> solicitar(@AuthenticationPrincipal GatewayPrincipal p,
                                          @Valid @RequestBody CreateWhitelistRequest r) {
         return Map.of("id", whitelist.solicitar(p.id(), r.email(), r.reason()).toString());
+    }
+
+    /** DEC-29 · the ADMIN's review queue: pending + resolved, newest first. */
+    @GetMapping("/requests")
+    @PreAuthorize("hasRole('ADMIN')")
+    public List<Map<String, String>> listarSolicitudes() {
+        return whitelist.listarSolicitudes().stream().map(this::aDto).toList();
+    }
+
+    private Map<String, String> aDto(WhitelistRequest r) {
+        Map<String, String> dto = new HashMap<>();
+        dto.put("id", r.getId().toString());
+        dto.put("email", r.getRequestedEmail());
+        dto.put("requestedBy", r.getRequestedBy().toString());
+        dto.put("status", r.getStatus().name());
+        dto.put("reason", r.getReason() == null ? "" : r.getReason());
+        dto.put("rejectionReason", r.getRejectionReason() == null ? "" : r.getRejectionReason());
+        if (r.getCreatedAt() != null) dto.put("createdAt", r.getCreatedAt().toString());
+        return dto;
     }
 
     @PatchMapping("/requests/{id}")

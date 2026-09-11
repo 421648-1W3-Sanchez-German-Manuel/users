@@ -78,4 +78,6 @@ public class WhitelistRequest {
     public UUID getRequestedBy() { return requestedBy; }
     public String getReason() { return reason; }
     public RequestStatus getStatus() { return status; }
+    public String getRejectionReason() { return rejectionReason; }
+    public Instant getCreatedAt() { return createdAt; }
 }

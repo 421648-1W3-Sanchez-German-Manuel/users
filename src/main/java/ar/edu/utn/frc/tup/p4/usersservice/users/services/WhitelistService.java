@@ -7,6 +7,7 @@ import ar.edu.utn.frc.tup.p4.usersservice.users.entities.*;
 import ar.edu.utn.frc.tup.p4.usersservice.users.enums.RequestStatus;
 import ar.edu.utn.frc.tup.p4.usersservice.users.enums.Role;
 import ar.edu.utn.frc.tup.p4.usersservice.users.repositories.*;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -40,6 +41,12 @@ public class WhitelistService {
 
     @Transactional(readOnly = true)
     public List<EmailWhitelist> listar() { return lista.findAllByDeletedAtIsNull(); }
+
+    /** DEC-29 · the ADMIN's review queue, newest first. */
+    @Transactional(readOnly = true)
+    public List<WhitelistRequest> listarSolicitudes() {
+        return solicitudes.findAll(Sort.by(Sort.Direction.DESC, "createdAt"));
+    }
 
     @Transactional
     public UUID solicitar(UUID profesorId, String email, String reason) {
