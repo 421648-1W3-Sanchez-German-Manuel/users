@@ -37,8 +37,10 @@ public class UserService {
     public UserMeResponse me(UUID id) {
         User u = buscar(id);
         return new UserMeResponse(u.getId().toString(), u.getFirstNames(), u.getLastNames(),
-                u.getEmail(), u.getRole(), u.getAccountStatus(), u.mustChangePassword(),
-                u.isFirstLogin(), u.isGuidedTourCompleted(), u.getGithubUsername(), u.getAvatarRef());
+                u.getLegajo(), u.getEmail(), u.getRole(), u.getAccountStatus(),
+                u.mustChangePassword(), u.isFirstLogin(), u.isGuidedTourCompleted(),
+                u.getGithubUsername(), u.getAvatarRef(), u.isEmailVerified(), u.getCreatedAt(),
+                u.getTermsAcceptedAt(), u.getAcceptedTermsVersion());
     }
 
     @Transactional(readOnly = true)

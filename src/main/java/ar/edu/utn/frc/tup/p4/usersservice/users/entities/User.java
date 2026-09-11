@@ -151,4 +151,6 @@ private Role role;
     public boolean isGuidedTourCompleted() { return guidedTourCompleted; }
     public Instant getDeletedAt() { return deletedAt; }
     public Instant getCreatedAt() { return createdAt; }
+    public Instant getTermsAcceptedAt() { return termsAcceptedAt; }
+    public String getAcceptedTermsVersion() { return acceptedTermsVersion; }
 }
