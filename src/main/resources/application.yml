@@ -70,6 +70,17 @@ eureka:
     prefer-ip-address: true
 
 # ---------------------------------------------------------------------------
+# Contrato de rutas con el API Gateway (convenciones de integracion, slide 04).
+# Los dos prefijos viven aca y los @RequestMapping los referencian como
+# "${app.api.public-path}/..." / "${app.api.private-path}/...", nunca el
+# literal "/api/users...".
+# ---------------------------------------------------------------------------
+app:
+  api:
+    public-path: /api/users/public
+    private-path: /api/users
+
+# ---------------------------------------------------------------------------
 # Every lot adds its own block below. This file has ONE owner (see
 # docs/TASK-ASSIGNMENT.md): send the block instead of committing it, or six
 # branches collide in the same place.

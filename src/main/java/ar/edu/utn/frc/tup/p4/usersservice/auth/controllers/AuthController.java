@@ -9,7 +9,7 @@ import org.springframework.web.bind.annotation.*;
 import java.util.Map;
 
 @RestController
-@RequestMapping("/api/users/public/auth")
+@RequestMapping("${app.api.public-path}/auth")
 public class AuthController {
 
     private final AuthService auth;
