@@ -11,6 +11,7 @@ import org.hibernate.event.spi.PreUpdateEventListener;
 import org.hibernate.metamodel.mapping.AttributeMapping;
 import org.hibernate.metamodel.mapping.BasicValuedModelPart;
 import org.hibernate.persister.entity.EntityPersister;
+import org.slf4j.MDC;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Component;
@@ -38,6 +39,7 @@ public class AuditHibernateListener
         implements PreInsertEventListener, PreUpdateEventListener, PreDeleteEventListener {
 
     private static final Pattern SQL_IDENTIFIER = Pattern.compile("[A-Za-z0-9_]+");
+    private static final Pattern TRACE_ID = Pattern.compile("[0-9a-f]{32}");
 
     private final Clock clock;
     private final Map<String, AuditMetadata> metadataCache = new ConcurrentHashMap<>();
@@ -57,13 +59,16 @@ public class AuditHibernateListener
         BaseAuditableEntity entity = auditedEntity(event.getEntity());
         Instant now = clock.instant();
         AuditActor actor = currentActor();
-        entity.initializeAuditFields(now, actor.userId(), actor.serviceId());
+        String traceId = currentTraceId();
+        entity.initializeAuditFields(now, actor.userId(), actor.serviceId(), traceId);
         setState(event.getPersister(), event.getState(), "createdAt", now);
         setState(event.getPersister(), event.getState(), "createdUser", actor.userId());
         setState(event.getPersister(), event.getState(), "createdService", actor.serviceId());
+        setState(event.getPersister(), event.getState(), "createdTraceId", traceId);
         setState(event.getPersister(), event.getState(), "updatedAt", now);
         setState(event.getPersister(), event.getState(), "lastUpdatedUser", actor.userId());
         setState(event.getPersister(), event.getState(), "lastUpdatedService", actor.serviceId());
+        setState(event.getPersister(), event.getState(), "lastUpdatedTraceId", traceId);
         setState(event.getPersister(), event.getState(), "lockVersion", 0L);
         transactionStateForCurrentTransaction().insertedEntities().add(
                 new AuditKey(event.getPersister().getEntityName(), event.getId()));
@@ -88,10 +93,12 @@ public class AuditHibernateListener
         BaseAuditableEntity entity = auditedEntity(event.getEntity());
         Instant now = clock.instant();
         AuditActor actor = currentActor();
-        entity.updateAuditFields(now, actor.userId(), actor.serviceId());
+        String traceId = currentTraceId();
+        entity.updateAuditFields(now, actor.userId(), actor.serviceId(), traceId);
         setState(event.getPersister(), event.getState(), "updatedAt", now);
         setState(event.getPersister(), event.getState(), "lastUpdatedUser", actor.userId());
         setState(event.getPersister(), event.getState(), "lastUpdatedService", actor.serviceId());
+        setState(event.getPersister(), event.getState(), "lastUpdatedTraceId", traceId);
         return false;
     }
 
@@ -265,6 +272,11 @@ public class AuditHibernateListener
             return new AuditActor(null, principal.serviceId());
         }
         return new AuditActor(null, null);
+    }
+
+    private String currentTraceId() {
+        String traceId = MDC.get("traceId");
+        return traceId != null && TRACE_ID.matcher(traceId).matches() ? traceId : null;
     }
 
     private boolean isAudited(EntityPersister persister) {

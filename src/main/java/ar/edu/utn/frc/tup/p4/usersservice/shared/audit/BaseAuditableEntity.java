@@ -28,6 +28,9 @@ public abstract class BaseAuditableEntity {
     @Column(name = "created_service", updatable = false, length = 100)
     private String createdService;
 
+    @Column(name = "created_trace_id", updatable = false, length = 32)
+    private String createdTraceId;
+
     @Column(name = "updated_at", nullable = false)
     private Instant updatedAt;
 
@@ -37,6 +40,9 @@ public abstract class BaseAuditableEntity {
 
     @Column(name = "last_updated_service", length = 100)
     private String lastUpdatedService;
+
+    @Column(name = "last_updated_trace_id", length = 32)
+    private String lastUpdatedTraceId;
 
     @Version
     @Column(name = "lock_version", nullable = false)
@@ -58,6 +64,10 @@ public abstract class BaseAuditableEntity {
         return createdService;
     }
 
+    public String getCreatedTraceId() {
+        return createdTraceId;
+    }
+
     public Instant getUpdatedAt() {
         return updatedAt;
     }
@@ -68,6 +78,10 @@ public abstract class BaseAuditableEntity {
 
     public String getLastUpdatedService() {
         return lastUpdatedService;
+    }
+
+    public String getLastUpdatedTraceId() {
+        return lastUpdatedTraceId;
     }
 
     public long getLockVersion() {
@@ -86,19 +100,30 @@ public abstract class BaseAuditableEntity {
         this.updatedAt = updatedAt;
     }
 
-    final void initializeAuditFields(Instant now, UUID actorUser, String actorService) {
+    final void initializeAuditFields(
+            Instant now,
+            UUID actorUser,
+            String actorService,
+            String traceId) {
         this.createdAt = now;
         this.createdUser = actorUser;
         this.createdService = actorService;
+        this.createdTraceId = traceId;
         this.updatedAt = now;
         this.lastUpdatedUser = actorUser;
         this.lastUpdatedService = actorService;
+        this.lastUpdatedTraceId = traceId;
         this.lockVersion = 0;
     }
 
-    final void updateAuditFields(Instant now, UUID actorUser, String actorService) {
+    final void updateAuditFields(
+            Instant now,
+            UUID actorUser,
+            String actorService,
+            String traceId) {
         this.updatedAt = now;
         this.lastUpdatedUser = actorUser;
         this.lastUpdatedService = actorService;
+        this.lastUpdatedTraceId = traceId;
     }
 }

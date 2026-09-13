@@ -14,6 +14,7 @@ import ar.edu.utn.frc.tup.p4.usersservice.users.repositories.WhitelistRequestRep
 import org.hibernate.HibernateException;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
+import org.slf4j.MDC;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
@@ -39,14 +40,17 @@ class AuditIT extends AbstractIntegrationTest {
     @Autowired TransactionTemplate transactions;
 
     @AfterEach
-    void clearSecurityContext() {
+    void clearThreadContext() {
         SecurityContextHolder.clearContext();
+        MDC.remove("traceId");
     }
 
     @Test
     void insert_sets_common_fields_without_creating_history() {
         UUID actor = UUID.randomUUID();
+        String traceId = "0123456789abcdef0123456789abcdef";
         authenticate(new GatewayPrincipal("user", actor, null));
+        MDC.put("traceId", traceId);
 
         User user = users.saveAndFlush(newUser(Role.PROFESSOR));
 
@@ -54,6 +58,8 @@ class AuditIT extends AbstractIntegrationTest {
         assertThat(user.getUpdatedAt()).isNotNull();
         assertThat(user.getCreatedUser()).isEqualTo(actor);
         assertThat(user.getLastUpdatedUser()).isEqualTo(actor);
+        assertThat(user.getCreatedTraceId()).isEqualTo(traceId);
+        assertThat(user.getLastUpdatedTraceId()).isEqualTo(traceId);
         assertThat(user.getLockVersion()).isZero();
         assertThat(auditCount("users_audit", user.getId())).isZero();
     }
@@ -143,11 +149,15 @@ class AuditIT extends AbstractIntegrationTest {
 
     @Test
     void service_actor_is_preserved_in_history_and_replaced_by_person_actor() {
+        String creationTraceId = "0123456789abcdef0123456789abcdef";
+        String updateTraceId = "fedcba9876543210fedcba9876543210";
         authenticate(new GatewayPrincipal("service", null, "test-service"));
+        MDC.put("traceId", creationTraceId);
         User user = users.saveAndFlush(newUser(Role.PROFESSOR));
 
         UUID personActor = UUID.randomUUID();
         authenticate(new GatewayPrincipal("user", personActor, null));
+        MDC.put("traceId", updateTraceId);
         transactions.executeWithoutResult(status -> {
             User managed = users.findById(user.getId()).orElseThrow();
             managed.changeRole(Role.STUDENT);
@@ -158,6 +168,8 @@ class AuditIT extends AbstractIntegrationTest {
         assertThat(updated.getCreatedService()).isEqualTo("test-service");
         assertThat(updated.getLastUpdatedService()).isNull();
         assertThat(updated.getLastUpdatedUser()).isEqualTo(personActor);
+        assertThat(updated.getCreatedTraceId()).isEqualTo(creationTraceId);
+        assertThat(updated.getLastUpdatedTraceId()).isEqualTo(updateTraceId);
         assertThat(jdbc.queryForObject(
                 "SELECT created_service FROM users_audit WHERE id = ?",
                 String.class,
@@ -166,6 +178,14 @@ class AuditIT extends AbstractIntegrationTest {
                 "SELECT last_updated_service FROM users_audit WHERE id = ?",
                 String.class,
                 user.getId().toString())).isEqualTo("test-service");
+        assertThat(jdbc.queryForObject(
+                "SELECT created_trace_id FROM users_audit WHERE id = ?",
+                String.class,
+                user.getId().toString())).isEqualTo(creationTraceId);
+        assertThat(jdbc.queryForObject(
+                "SELECT last_updated_trace_id FROM users_audit WHERE id = ?",
+                String.class,
+                user.getId().toString())).isEqualTo(creationTraceId);
     }
 
     @Test
