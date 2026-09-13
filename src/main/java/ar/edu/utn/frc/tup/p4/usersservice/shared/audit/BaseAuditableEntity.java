@@ -25,12 +25,18 @@ public abstract class BaseAuditableEntity {
     @JdbcTypeCode(SqlTypes.CHAR)
     private UUID createdUser;
 
+    @Column(name = "created_service", updatable = false, length = 100)
+    private String createdService;
+
     @Column(name = "updated_at", nullable = false)
     private Instant updatedAt;
 
     @Column(name = "last_updated_user", columnDefinition = "CHAR(36)")
     @JdbcTypeCode(SqlTypes.CHAR)
     private UUID lastUpdatedUser;
+
+    @Column(name = "last_updated_service", length = 100)
+    private String lastUpdatedService;
 
     @Version
     @Column(name = "lock_version", nullable = false)
@@ -48,12 +54,20 @@ public abstract class BaseAuditableEntity {
         return createdUser;
     }
 
+    public String getCreatedService() {
+        return createdService;
+    }
+
     public Instant getUpdatedAt() {
         return updatedAt;
     }
 
     public UUID getLastUpdatedUser() {
         return lastUpdatedUser;
+    }
+
+    public String getLastUpdatedService() {
+        return lastUpdatedService;
     }
 
     public long getLockVersion() {
@@ -72,16 +86,19 @@ public abstract class BaseAuditableEntity {
         this.updatedAt = updatedAt;
     }
 
-    final void initializeAuditFields(Instant now, UUID actor) {
+    final void initializeAuditFields(Instant now, UUID actorUser, String actorService) {
         this.createdAt = now;
-        this.createdUser = actor;
+        this.createdUser = actorUser;
+        this.createdService = actorService;
         this.updatedAt = now;
-        this.lastUpdatedUser = actor;
+        this.lastUpdatedUser = actorUser;
+        this.lastUpdatedService = actorService;
         this.lockVersion = 0;
     }
 
-    final void updateAuditFields(Instant now, UUID actor) {
+    final void updateAuditFields(Instant now, UUID actorUser, String actorService) {
         this.updatedAt = now;
-        this.lastUpdatedUser = actor;
+        this.lastUpdatedUser = actorUser;
+        this.lastUpdatedService = actorService;
     }
 }

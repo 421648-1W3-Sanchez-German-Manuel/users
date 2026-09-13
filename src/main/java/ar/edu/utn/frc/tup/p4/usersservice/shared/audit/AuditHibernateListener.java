@@ -56,12 +56,14 @@ public class AuditHibernateListener
 
         BaseAuditableEntity entity = auditedEntity(event.getEntity());
         Instant now = clock.instant();
-        UUID actor = currentActor();
-        entity.initializeAuditFields(now, actor);
+        AuditActor actor = currentActor();
+        entity.initializeAuditFields(now, actor.userId(), actor.serviceId());
         setState(event.getPersister(), event.getState(), "createdAt", now);
-        setState(event.getPersister(), event.getState(), "createdUser", actor);
+        setState(event.getPersister(), event.getState(), "createdUser", actor.userId());
+        setState(event.getPersister(), event.getState(), "createdService", actor.serviceId());
         setState(event.getPersister(), event.getState(), "updatedAt", now);
-        setState(event.getPersister(), event.getState(), "lastUpdatedUser", actor);
+        setState(event.getPersister(), event.getState(), "lastUpdatedUser", actor.userId());
+        setState(event.getPersister(), event.getState(), "lastUpdatedService", actor.serviceId());
         setState(event.getPersister(), event.getState(), "lockVersion", 0L);
         transactionStateForCurrentTransaction().insertedEntities().add(
                 new AuditKey(event.getPersister().getEntityName(), event.getId()));
@@ -85,10 +87,11 @@ public class AuditHibernateListener
 
         BaseAuditableEntity entity = auditedEntity(event.getEntity());
         Instant now = clock.instant();
-        UUID actor = currentActor();
-        entity.updateAuditFields(now, actor);
+        AuditActor actor = currentActor();
+        entity.updateAuditFields(now, actor.userId(), actor.serviceId());
         setState(event.getPersister(), event.getState(), "updatedAt", now);
-        setState(event.getPersister(), event.getState(), "lastUpdatedUser", actor);
+        setState(event.getPersister(), event.getState(), "lastUpdatedUser", actor.userId());
+        setState(event.getPersister(), event.getState(), "lastUpdatedService", actor.serviceId());
         return false;
     }
 
@@ -252,14 +255,16 @@ public class AuditHibernateListener
         state[index] = value;
     }
 
-    private UUID currentActor() {
+    private AuditActor currentActor() {
         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
         if (authentication != null
-                && authentication.getPrincipal() instanceof GatewayPrincipal principal
-                && principal.isPerson()) {
-            return principal.id();
+                && authentication.getPrincipal() instanceof GatewayPrincipal principal) {
+            if (principal.isPerson()) {
+                return new AuditActor(principal.id(), null);
+            }
+            return new AuditActor(null, principal.serviceId());
         }
-        return null;
+        return new AuditActor(null, null);
     }
 
     private boolean isAudited(EntityPersister persister) {
@@ -281,6 +286,9 @@ public class AuditHibernateListener
     }
 
     private record AuditKey(String entityName, Object id) {
+    }
+
+    private record AuditActor(UUID userId, String serviceId) {
     }
 
     private record TransactionAuditState(

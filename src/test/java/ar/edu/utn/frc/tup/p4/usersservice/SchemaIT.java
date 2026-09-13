@@ -35,6 +35,23 @@ class SchemaIT extends AbstractIntegrationTest {
     }
 
     @Test
+    void audited_tables_include_service_actor_columns() {
+        for (String table : List.of(
+                "users", "email_whitelist", "service_clients", "whitelist_requests",
+                "users_audit", "email_whitelist_audit", "service_clients_audit",
+                "whitelist_requests_audit")) {
+            List<String> columns = jdbc.queryForList(
+                    "SELECT column_name FROM information_schema.columns "
+                            + "WHERE table_schema = DATABASE() AND table_name = ?",
+                    String.class,
+                    table);
+            assertThat(columns)
+                    .as("service actor columns in %s", table)
+                    .contains("created_service", "last_updated_service");
+        }
+    }
+
+    @Test
     void every_table_is_utf8mb4() {
         // DEC-20 rule 4: plain utf8 is 3 bytes and misses the supplementary plane.
         List<String> noUtf8mb4 = jdbc.queryForList(

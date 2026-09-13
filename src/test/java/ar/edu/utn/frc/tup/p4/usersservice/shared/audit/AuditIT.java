@@ -126,7 +126,7 @@ class AuditIT extends AbstractIntegrationTest {
     }
 
     @Test
-    void service_and_public_operations_store_no_person_actor() {
+    void service_operations_store_the_service_actor() {
         authenticate(new GatewayPrincipal("service", null, "test-service"));
         ServiceClient client = serviceClients.saveAndFlush(ServiceClient.create(
                 "client-" + UUID.randomUUID(),
@@ -136,7 +136,36 @@ class AuditIT extends AbstractIntegrationTest {
 
         assertThat(client.getCreatedUser()).isNull();
         assertThat(client.getLastUpdatedUser()).isNull();
+        assertThat(client.getCreatedService()).isEqualTo("test-service");
+        assertThat(client.getLastUpdatedService()).isEqualTo("test-service");
         assertThat(auditCount("service_clients_audit", client.getId())).isZero();
+    }
+
+    @Test
+    void service_actor_is_preserved_in_history_and_replaced_by_person_actor() {
+        authenticate(new GatewayPrincipal("service", null, "test-service"));
+        User user = users.saveAndFlush(newUser(Role.PROFESSOR));
+
+        UUID personActor = UUID.randomUUID();
+        authenticate(new GatewayPrincipal("user", personActor, null));
+        transactions.executeWithoutResult(status -> {
+            User managed = users.findById(user.getId()).orElseThrow();
+            managed.changeRole(Role.STUDENT);
+            users.saveAndFlush(managed);
+        });
+
+        User updated = users.findById(user.getId()).orElseThrow();
+        assertThat(updated.getCreatedService()).isEqualTo("test-service");
+        assertThat(updated.getLastUpdatedService()).isNull();
+        assertThat(updated.getLastUpdatedUser()).isEqualTo(personActor);
+        assertThat(jdbc.queryForObject(
+                "SELECT created_service FROM users_audit WHERE id = ?",
+                String.class,
+                user.getId().toString())).isEqualTo("test-service");
+        assertThat(jdbc.queryForObject(
+                "SELECT last_updated_service FROM users_audit WHERE id = ?",
+                String.class,
+                user.getId().toString())).isEqualTo("test-service");
     }
 
     @Test
