@@ -12,7 +12,7 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
-@RequestMapping("/api/users/auth")
+@RequestMapping("${app.api.private-path}/auth")
 public class AuthPrivateController {
 
     private final AuthService auth;

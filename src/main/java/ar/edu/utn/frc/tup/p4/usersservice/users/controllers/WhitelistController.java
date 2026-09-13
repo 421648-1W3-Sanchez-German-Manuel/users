@@ -12,7 +12,7 @@ import org.springframework.web.bind.annotation.*;
 import java.util.*;
 
 @RestController
-@RequestMapping("/api/users/whitelist")
+@RequestMapping("${app.api.private-path}/whitelist")
 public class WhitelistController {
 
     private final WhitelistService whitelist;

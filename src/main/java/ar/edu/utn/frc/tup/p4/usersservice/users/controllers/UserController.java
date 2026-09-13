@@ -14,7 +14,7 @@ import java.util.Map;
 import java.util.UUID;
 
 @RestController
-@RequestMapping("/api/users")
+@RequestMapping("${app.api.private-path}")
 public class UserController {
 
     private final UserService users;

@@ -8,7 +8,7 @@ import org.springframework.web.bind.annotation.*;
 import java.util.Map;
 
 @RestController
-@RequestMapping("/api/users/public/registration")
+@RequestMapping("${app.api.public-path}/registration")
 public class RegistrationController {
 
     private final RegistrationService registro;
