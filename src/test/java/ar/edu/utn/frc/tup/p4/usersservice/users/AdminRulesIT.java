@@ -8,6 +8,7 @@ import ar.edu.utn.frc.tup.p4.usersservice.users.enums.AccountStatus;
 import ar.edu.utn.frc.tup.p4.usersservice.users.enums.Role;
 import ar.edu.utn.frc.tup.p4.usersservice.users.repositories.UserRepository;
 import ar.edu.utn.frc.tup.p4.usersservice.users.services.UserService;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -35,6 +36,15 @@ class AdminRulesIT extends AbstractIntegrationTest {
     @Autowired UserRepository repo;
     @Autowired PasswordEncoder encoder;
 
+    @BeforeEach
+    void deactivate_existing_admins() {
+        List<User> activeAdmins = repo.findByDeletedAtIsNullOrderByCreatedAtDesc().stream()
+                .filter(user -> user.getRole() == Role.ADMIN)
+                .toList();
+        activeAdmins.forEach(User::deactivate);
+        repo.saveAllAndFlush(activeAdmins);
+    }
+
     private User admin(String email) {
         User u = User.createAdmin("Ad", "Min", email, encoder.encode("passwordvalida1"), "v1");
         u.changePassword(encoder.encode("passwordvalida1"));   // clears mustChangePassword
@@ -47,7 +57,6 @@ class AdminRulesIT extends AbstractIntegrationTest {
 
     @Test
     void no_se_puede_dejar_la_plataforma_sin_ningun_ADMIN() {
-        repo.deleteAll();
         User unico = admin("solo@utn.edu.ar");
         assertThatThrownBy(() -> users.deactivate(unico.getId(), unico.getId(),
                 confirmacion("solo@utn.edu.ar")))
@@ -77,7 +86,6 @@ class AdminRulesIT extends AbstractIntegrationTest {
 
     @Test
     void dos_bajas_CONCURRENTES_no_pueden_dejar_cero_ADMIN() throws Exception {
-        repo.deleteAll();
         User a = admin("c1@utn.edu.ar");
         User b = admin("c2@utn.edu.ar");
         User actor = admin("c3@utn.edu.ar");
@@ -109,7 +117,6 @@ class AdminRulesIT extends AbstractIntegrationTest {
 
     @Test
     void cambiar_el_rol_del_ultimo_ADMIN_tambien_se_bloquea() {
-        repo.deleteAll();
         User unico = admin("role@utn.edu.ar");
         assertThatThrownBy(() -> users.changeRole(unico.getId(), unico.getId(), Role.PROFESSOR))
                 .isInstanceOf(ApiException.class);
