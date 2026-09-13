@@ -9,7 +9,7 @@ import java.util.Map;
 
 /** DEC-31 - public with NO token: it has to be readable BEFORE having an account. */
 @RestController
-@RequestMapping("/api/users/public/legal")
+@RequestMapping("${app.api.public-path}/legal")
 public class LegalController {
 
     private final String version;

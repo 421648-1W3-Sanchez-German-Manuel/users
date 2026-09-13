@@ -12,7 +12,7 @@ import org.springframework.web.bind.annotation.RestController;
 import java.util.Map;
 
 @RestController
-@RequestMapping("/api/users/public/auth")
+@RequestMapping("${app.api.public-path}/auth")
 public class TokenController {
 
     private final ServiceClientService clients;

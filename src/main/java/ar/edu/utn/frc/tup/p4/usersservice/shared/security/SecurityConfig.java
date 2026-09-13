@@ -2,6 +2,7 @@ package ar.edu.utn.frc.tup.p4.usersservice.shared.security;
 
 import ar.edu.utn.frc.tup.p4.usersservice.shared.web.ErrorTypes;
 import jakarta.servlet.http.HttpServletResponse;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.security.web.AuthenticationEntryPoint;
 import org.springframework.context.annotation.Configuration;
@@ -23,7 +24,8 @@ public class SecurityConfig {
     PasswordEncoder passwordEncoder() { return new BCryptPasswordEncoder(12); }
 
     @Bean
-    SecurityFilterChain chain(HttpSecurity http, GatewayIdentityFilter identityFilter) throws Exception {
+    SecurityFilterChain chain(HttpSecurity http, GatewayIdentityFilter identityFilter,
+            @Value("${app.api.public-path}") String publicPath) throws Exception {
         return http
                 // No CSRF and no session: a stateless API behind the gateway.
                 .csrf(csrf -> csrf.disable())
@@ -32,7 +34,7 @@ public class SecurityConfig {
                 .formLogin(f -> f.disable())
                 .addFilterBefore(identityFilter, UsernamePasswordAuthenticationFilter.class)
                 .authorizeHttpRequests(a -> a
-                        .requestMatchers("/api/users/public/**").permitAll()
+                        .requestMatchers(publicPath + "/**").permitAll()
                         .requestMatchers("/.well-known/**").permitAll()
                         .requestMatchers("/actuator/health/**").permitAll()
                         // The dispatch to /error runs WITHOUT the GatewayIdentityFilter
