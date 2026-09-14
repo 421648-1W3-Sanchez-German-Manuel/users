@@ -4,13 +4,21 @@ import ar.edu.utn.frc.tup.p4.usersservice.auth.dto.PasswordChangeRequest;
 import ar.edu.utn.frc.tup.p4.usersservice.auth.dto.RefreshRequest;
 import ar.edu.utn.frc.tup.p4.usersservice.auth.services.AuthService;
 import ar.edu.utn.frc.tup.p4.usersservice.auth.services.PasswordService;
+import ar.edu.utn.frc.tup.p4.usersservice.config.OpenApiConfig;
 import ar.edu.utn.frc.tup.p4.usersservice.shared.gates.SkipAccountGate;
 import ar.edu.utn.frc.tup.p4.usersservice.shared.security.GatewayPrincipal;
 import ar.edu.utn.frc.tup.p4.usersservice.shared.web.ApiException;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
+@Tag(name = "Auth (sesion)",
+     description = "Operaciones sobre la sesion propia. Exigen un access token vigente.")
+@SecurityRequirement(name = OpenApiConfig.BEARER_SCHEME)
 @RestController
 @RequestMapping("${app.api.private-path}/auth")
 public class AuthPrivateController {
@@ -28,6 +36,19 @@ public class AuthPrivateController {
      * password change or pending onboarding still has to be able to log out.
      * The exit endpoint of a gate is exempt from both fine-grained gates.
      */
+    @Operation(summary = "Cierra la sesion",
+               description = """
+                       Exento de los TRES gates: alguien con la cuenta pendiente, con cambio de
+                       contraseña forzado o con el onboarding sin terminar tiene que poder salir
+                       igual. Una cuenta frenada que ademas no puede desloguearse es una trampa.
+
+                       El body es OPCIONAL: sin el se cierra la sesion, y con el `refreshToken`
+                       se mata ademas esa familia de tokens.
+
+                       El gateway cachea el estado de sesion 3 s, asi que durante esa ventana el
+                       token viejo puede seguir entrando. Esperar ~4 s antes de concluir que el
+                       logout no anduvo.""")
+    @ApiResponse(responseCode = "200", description = "Sesion cerrada.")
     @PostMapping("/logout")
     @SkipAccountGate({SkipAccountGate.Gate.ESTADO, SkipAccountGate.Gate.PASSWORD,
                       SkipAccountGate.Gate.ONBOARDING})
@@ -44,6 +65,20 @@ public class AuthPrivateController {
      * cut by the onboarding gate while /me/onboarding would be cut by the
      * password one. See the exemption rule in task 8.
      */
+    @Operation(summary = "Cambia la contraseña propia",
+               description = """
+                       Es la SALIDA del gate de contraseña, asi que esta exenta de ese gate y
+                       tambien del de onboarding. Sin la segunda exencion el ADMIN inicial queda
+                       encerrado: nace con las dos condiciones pendientes a la vez, asi que esta
+                       ruta la cortaria el gate de onboarding y `/me/onboarding` la cortaria el
+                       de contraseña.
+
+                       **Cambiar la contraseña CIERRA la sesion.** Hay que volver a loguearse;
+                       los tokens viejos dejan de servir.""")
+    @ApiResponse(responseCode = "200", description = "Contraseña cambiada. La sesion queda cerrada.")
+    @ApiResponse(responseCode = "401", description = """
+            `type`: `invalid-credentials` si `currentPassword` no coincide, o
+            `not-authenticated` si el request no trae identidad.""")
     @PostMapping("/password/change")
     @SkipAccountGate({SkipAccountGate.Gate.PASSWORD, SkipAccountGate.Gate.ONBOARDING})
     public void cambiar(@AuthenticationPrincipal GatewayPrincipal p,

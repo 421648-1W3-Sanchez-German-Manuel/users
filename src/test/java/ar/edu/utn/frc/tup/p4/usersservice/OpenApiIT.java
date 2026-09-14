@@ -166,6 +166,39 @@ class OpenApiIT extends AbstractIntegrationTest {
     }
 
     @Test
+    void el_401_y_el_403_se_documentan_solo_en_lo_privado() throws Exception {
+        JsonNode paths = JSON.readTree(get(SPEC).body()).get("paths");
+
+        // Publica: el customizer NO le agrega 401/403. Documentar un 401 en una
+        // ruta anonima sugiere que puede mandar al login a alguien que no
+        // tiene sesion, que es justo lo que el no-negociable 3 evita.
+        JsonNode publica = paths.at("/~1api~1users~1public~1registration~1resend-activation/post/responses");
+        assertThat(publica.has("401")).isFalse();
+        assertThat(publica.has("403")).isFalse();
+
+        // Privada: los dos, puestos por el customizer y no a mano.
+        JsonNode privada = paths.at("/~1api~1users~1me/get/responses");
+        assertThat(privada.has("401")).isTrue();
+        assertThat(privada.has("403")).isTrue();
+    }
+
+    @Test
+    void el_customizer_no_pisa_el_400_propio_de_un_endpoint() throws Exception {
+        // /activate tiene un 400 que NO es `validation`: es `invalid-link`. El
+        // customizer corre DESPUES de que springdoc leyo las anotaciones, asi
+        // que un addApiResponse a secas lo reemplazaria y la doc diria
+        // "validacion fallida" donde el 400 significa "el enlace vencio".
+        JsonNode paths = JSON.readTree(get(SPEC).body()).get("paths");
+        String propio = paths.at(
+                "/~1api~1users~1public~1registration~1activate/post/responses/400/description").asText();
+        assertThat(propio).contains("invalid-link");
+
+        // Y donde el endpoint NO dice nada, el customizer sigue rellenando.
+        String generico = paths.at("/~1api~1users~1me/get/responses/400/description").asText();
+        assertThat(generico).contains("validation");
+    }
+
+    @Test
     void el_swagger_config_apunta_al_spec_propio() throws Exception {
         // Es el JSON que la pantalla pide para saber que spec cargar. Si esto
         // no resuelve, la UI abre vacia aunque el spec exista.
