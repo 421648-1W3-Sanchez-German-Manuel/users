@@ -37,6 +37,7 @@ public class SecurityConfig {
                         .requestMatchers(publicPath + "/**").permitAll()
                         .requestMatchers("/.well-known/**").permitAll()
                         .requestMatchers("/actuator/health/**").permitAll()
+                        .requestMatchers("/actuator/prometheus").permitAll()
                         // The dispatch to /error runs WITHOUT the GatewayIdentityFilter
                         // (OncePerRequestFilter skips the ERROR dispatch): if it
                         // required authentication, any internal error would come
