@@ -28,8 +28,11 @@ public class WhitelistService {
     }
 
     @Transactional
-    public UUID agregar(UUID admin, String email) {
-        return lista.saveAndFlush(EmailWhitelist.create(email, admin)).getId();
+    public UUID agregar(UUID actor, String email, Role role) {
+        if (role != Role.PROFESSOR && role != Role.GESTOR) {
+            throw ApiException.validation("La whitelist solo admite PROFESSOR o GESTOR.");
+        }
+        return lista.saveAndFlush(EmailWhitelist.create(email, role, actor)).getId();
     }
 
     @Transactional
@@ -72,8 +75,9 @@ public class WhitelistService {
 
         if (approve) {
             r.approve(adminId);
+            // solicitar() is PROFESSOR-only (a colleague referral), so the role is always PROFESSOR.
             if (!lista.existsByEmailAndDeletedAtIsNull(r.getRequestedEmail())) {
-                lista.save(EmailWhitelist.create(r.getRequestedEmail(), adminId));
+                lista.save(EmailWhitelist.create(r.getRequestedEmail(), Role.PROFESSOR, adminId));
             }
         } else {
             r.reject(adminId, rejectionReason);

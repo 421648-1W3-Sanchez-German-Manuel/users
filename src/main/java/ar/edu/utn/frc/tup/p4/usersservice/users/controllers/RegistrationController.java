@@ -26,6 +26,11 @@ public class RegistrationController {
         registro.registrarProfesor(r.firstNames(), r.lastNames(), r.email(), r.password(), r.termsVersion());
     }
 
+    @PostMapping("/gestor")
+    public void gestor(@Valid @RequestBody GestorRegistrationRequest r) {
+        registro.registrarGestor(r.firstNames(), r.lastNames(), r.email(), r.password(), r.termsVersion());
+    }
+
     /**
      * RF-USR-04 · paso 2: verificacion de posesion del email.
      *

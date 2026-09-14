@@ -5,6 +5,7 @@ import ar.edu.utn.frc.tup.p4.usersservice.shared.events.OutboxRepository;
 import ar.edu.utn.frc.tup.p4.usersservice.shared.web.ApiException;
 import ar.edu.utn.frc.tup.p4.usersservice.users.entities.EmailWhitelist;
 import ar.edu.utn.frc.tup.p4.usersservice.users.enums.AccountStatus;
+import ar.edu.utn.frc.tup.p4.usersservice.users.enums.Role;
 import ar.edu.utn.frc.tup.p4.usersservice.users.repositories.EmailWhitelistRepository;
 import ar.edu.utn.frc.tup.p4.usersservice.users.repositories.UserRepository;
 import ar.edu.utn.frc.tup.p4.usersservice.users.services.RegistrationService;
@@ -91,7 +92,7 @@ class RegistrationIT extends AbstractIntegrationTest {
     @Test
     void profesor_en_la_whitelist_se_registra_igual_que_un_alumno() {
         String email = emailUnico("prof");
-        whitelist.saveAndFlush(EmailWhitelist.create(email, UUID.randomUUID()));
+        whitelist.saveAndFlush(EmailWhitelist.create(email, Role.PROFESSOR, UUID.randomUUID()));
 
         registro.registrarProfesor("Juan", "Diaz", email, "passwordvalida1", "v1");
 

@@ -52,16 +52,18 @@ public class UserController {
         return users.perfil(id);
     }
 
-    /** ADMIN directory. Only active accounts, newest first. */
+    /** ADMIN/GESTOR directory. Only active accounts, newest first. */
     @GetMapping
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'GESTOR')")
     public List<UserListItemResponse> listar() {
         return users.listar();
     }
 
     /**
      * Layer 1 in the annotation (does it have the role?). Layer 2 in the service
-     * (does it leave the platform without an ADMIN?).
+     * (does it leave the platform without an ADMIN?). ADMIN-only: it creates
+     * only ADMIN accounts (see CreateUserRequest) — GESTOR accounts come in
+     * through the whitelist, like PROFESSOR.
      */
     @PostMapping
     @PreAuthorize("hasRole('ADMIN')")
@@ -70,15 +72,16 @@ public class UserController {
                 r.password()).toString());
     }
 
+    /** Layer 1 here, layer 2 (a GESTOR may never touch an ADMIN) in the service. */
     @DeleteMapping("/{id}")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'GESTOR')")
     public void baja(@AuthenticationPrincipal GatewayPrincipal p, @PathVariable UUID id,
                      @Valid @RequestBody AdminDeactivationRequest req) {
         users.deactivate(p.id(), id, req);
     }
 
     @PatchMapping("/{id}/role")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'GESTOR')")
     public void changeRole(@AuthenticationPrincipal GatewayPrincipal p, @PathVariable UUID id,
                            @Valid @RequestBody RoleChangeRequest req) {
         users.changeRole(p.id(), id, req.role());

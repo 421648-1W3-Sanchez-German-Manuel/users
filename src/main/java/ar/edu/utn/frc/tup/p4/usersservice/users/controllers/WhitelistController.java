@@ -20,27 +20,28 @@ public class WhitelistController {
     public WhitelistController(WhitelistService whitelist) { this.whitelist = whitelist; }
 
     @PostMapping
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'GESTOR')")
     public Map<String, String> agregar(@AuthenticationPrincipal GatewayPrincipal p,
                                        @Valid @RequestBody AddEmailRequest r) {
-        return Map.of("id", whitelist.agregar(p.id(), r.email()).toString());
+        return Map.of("id", whitelist.agregar(p.id(), r.email(), r.role()).toString());
     }
 
     @GetMapping
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'GESTOR')")
     public List<Map<String, String>> listar() {
         return whitelist.listar().stream()
                 .map(e -> {
                     Map<String, String> dto = new HashMap<>();
                     dto.put("id", e.getId().toString());
                     dto.put("email", e.getEmail());
+                    dto.put("role", e.getRole().name());
                     if (e.getCreatedAt() != null) dto.put("createdAt", e.getCreatedAt().toString());
                     return dto;
                 }).toList();
     }
 
     @DeleteMapping("/{id}")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'GESTOR')")
     public void remove(@PathVariable UUID id) { whitelist.remove(id); }
 
     @PostMapping("/requests")
@@ -50,9 +51,9 @@ public class WhitelistController {
         return Map.of("id", whitelist.solicitar(p.id(), r.email(), r.reason()).toString());
     }
 
-    /** DEC-29 · the ADMIN's review queue: pending + resolved, newest first. */
+    /** DEC-29 · the ADMIN/GESTOR review queue: pending + resolved, newest first. */
     @GetMapping("/requests")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'GESTOR')")
     public List<Map<String, String>> listarSolicitudes() {
         return whitelist.listarSolicitudes().stream().map(this::aDto).toList();
     }
@@ -70,7 +71,7 @@ public class WhitelistController {
     }
 
     @PatchMapping("/requests/{id}")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'GESTOR')")
     public void resolver(@AuthenticationPrincipal GatewayPrincipal p, @PathVariable UUID id,
                          @Valid @RequestBody ResolveWhitelistRequest r) {
         whitelist.resolver(p.id(), id, r.approve(), r.rejectionReason());

@@ -76,6 +76,11 @@ public class UserService {
     public void deactivate(UUID actorId, UUID objetivoId, AdminDeactivationRequest req) {
         User objetivo = buscar(objetivoId);
 
+        // A GESTOR manages PROFESSOR and GESTOR accounts, never ADMIN.
+        if (buscar(actorId).getRole() == Role.GESTOR && objetivo.getRole() == Role.ADMIN) {
+            throw ApiException.accessDenied();
+        }
+
         if (objetivo.getRole() == Role.ADMIN) {
             if (actorId.equals(objetivoId)) {
                 throw ApiException.validation("Un ADMIN no puede darse de baja a si mismo.");
@@ -100,6 +105,14 @@ public class UserService {
     @Transactional
     public void changeRole(UUID actorId, UUID objetivoId, Role nuevo) {
         User objetivo = buscar(objetivoId);
+
+        // A GESTOR can only move PROFESSOR/GESTOR accounts between those two
+        // roles: it can neither touch an existing ADMIN nor grant ADMIN.
+        if (buscar(actorId).getRole() == Role.GESTOR
+                && (objetivo.getRole() == Role.ADMIN || nuevo == Role.ADMIN)) {
+            throw ApiException.accessDenied();
+        }
+
         if (objetivo.getRole() == Role.ADMIN && nuevo != Role.ADMIN
                 && repo.countActiveWithLock(Role.ADMIN) <= 1) {
             throw ApiException.lastAdmin();

@@ -1,5 +1,6 @@
 package ar.edu.utn.frc.tup.p4.usersservice.users.entities;
 
+import ar.edu.utn.frc.tup.p4.usersservice.users.enums.Role;
 import jakarta.persistence.*;
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
@@ -17,6 +18,9 @@ public class EmailWhitelist {
     private UUID id;
 
     private String email;
+    @Enumerated(EnumType.STRING)
+    @Column(name = "role")
+    private Role role;
     @Column(name = "added_by", columnDefinition = "CHAR(36)")
     @JdbcTypeCode(SqlTypes.CHAR)
     private UUID addedBy;
@@ -25,10 +29,11 @@ public class EmailWhitelist {
 
     protected EmailWhitelist() { }
 
-    public static EmailWhitelist create(String email, UUID addedBy) {
+    public static EmailWhitelist create(String email, Role role, UUID addedBy) {
         EmailWhitelist w = new EmailWhitelist();
         w.id = UUID.randomUUID();
         w.email = email.toLowerCase(Locale.ROOT);
+        w.role = role;
         w.addedBy = addedBy;
         w.createdAt = Instant.now();
         return w;
@@ -38,5 +43,6 @@ public class EmailWhitelist {
 
     public UUID getId() { return id; }
     public String getEmail() { return email; }
+    public Role getRole() { return role; }
     public Instant getCreatedAt() { return createdAt; }
 }
