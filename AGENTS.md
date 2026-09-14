@@ -103,6 +103,23 @@ payload without telling the other side.
 
 ## Documentation
 
+**The live API reference** is Swagger UI, with the stack up:
+
+```
+http://localhost:3000/api/users/public/docs          # the screen
+http://localhost:3000/api/users/public/v3/api-docs   # the raw OpenAPI spec
+```
+
+It hangs off the **public** prefix and that is not cosmetic. This service
+publishes no ports, nginx only proxies `/api/` to the gateway, and the gateway
+only lets `/api/*/public/**` through without a JWT. Move those paths anywhere
+else and the page stops being reachable — the symptom is a 401, or the front's
+`index.html`, never "you moved the path". `OpenApiIT` pins it.
+
+To try a private endpoint from the page, hit **Authorize** and paste the access
+token from `/auth/2fa/verify`. The gateway is what validates it; this service
+only ever sees the `X-*` headers.
+
 | Document | Contents |
 |---|---|
 | `docs/plans/users-service.md` | The implementation plan, task by task |

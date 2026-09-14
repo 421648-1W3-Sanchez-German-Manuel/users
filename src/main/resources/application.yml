@@ -149,6 +149,42 @@ users:
       notifications:      ${TOPIC_NOTIFICATIONS:tema-XX-notificaciones.email.v1}
       course-validation:  ${TOPIC_COURSE_VALIDATION:tema-02-cursos.validacion-resuelta.v1}
 
+# ---------------------------------------------------------------------------
+# OpenAPI / Swagger UI
+#
+# TODO cuelga del prefijo PUBLICO, y no es una preferencia estetica: es la
+# unica forma de que la doc se vea. Tres restricciones se multiplican:
+#
+#   1. Este servicio no publica puertos (no-negociable 1). La unica puerta es
+#      nginx en :3000.
+#   2. nginx solo proxea /api/, /.well-known/ y /dev/ hacia el gateway. TODO lo
+#      demas cae en la SPA de Angular, asi que un /swagger-ui.html clasico
+#      devuelve el index.html del front, no la doc.
+#   3. El gateway solo deja pasar sin JWT lo que matchea /api/*/public/**
+#      (PublicRouteMatcher.API_PUBLIC_PATTERN).
+#
+# Con estos dos paths no hay que tocar nginx, ni agregar una ruta al gateway,
+# ni abrir un permitAll en SecurityConfig: /api/users/** ya rutea aca y
+# /api/users/public/** ya es publico. Moverlos fuera de este prefijo es
+# romper las tres cosas a la vez.
+#
+# El placeholder en vez del literal "/api/users/public" es la misma convencion
+# que usan los @RequestMapping: el prefijo tiene UN dueño, arriba.
+# ---------------------------------------------------------------------------
+springdoc:
+  api-docs:
+    path: ${app.api.public-path}/v3/api-docs
+    enabled: ${OPENAPI_ENABLED:true}
+  swagger-ui:
+    path: ${app.api.public-path}/docs
+    enabled: ${OPENAPI_ENABLED:true}
+    # Sin esto la pantalla arranca mostrando el petstore de ejemplo y hay que
+    # elegir el spec propio a mano en el dropdown.
+    disable-swagger-default-url: true
+    operations-sorter: method
+    tags-sorter: alpha
+    display-request-duration: true
+
 logging:
   pattern:
     level: "%5p [${spring.application.name},%X{traceId:-},%X{requestId:-}]"
