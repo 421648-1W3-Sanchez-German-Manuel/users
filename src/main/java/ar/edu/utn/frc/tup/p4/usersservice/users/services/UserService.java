@@ -90,6 +90,10 @@ public class UserService {
             throw ApiException.accessDenied();
         }
 
+        if (buscar(actorId).getRole() == Role.GESTOR && actorId.equals(objetivoId)) {
+            throw ApiException.validation("Un GESTOR no puede darse de baja a si mismo.");
+        }
+
         if (objetivo.getRole() == Role.ADMIN) {
             if (actorId.equals(objetivoId)) {
                 throw ApiException.validation("Un ADMIN no puede darse de baja a si mismo.");
@@ -122,6 +126,10 @@ public class UserService {
                 || (nuevo != Role.PROFESSOR && nuevo != Role.GESTOR);
         if (buscar(actorId).getRole() == Role.GESTOR && fueraDeAlcance) {
             throw ApiException.accessDenied();
+        }
+
+        if (buscar(actorId).getRole() == Role.GESTOR && actorId.equals(objetivoId)) {
+            throw ApiException.validation("Un GESTOR no puede cambiarse el rol a si mismo.");
         }
 
         if (objetivo.getRole() == Role.ADMIN && nuevo != Role.ADMIN

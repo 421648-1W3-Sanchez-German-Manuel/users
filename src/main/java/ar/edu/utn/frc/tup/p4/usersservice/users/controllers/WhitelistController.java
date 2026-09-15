@@ -2,8 +2,10 @@ package ar.edu.utn.frc.tup.p4.usersservice.users.controllers;
 
 import ar.edu.utn.frc.tup.p4.usersservice.config.OpenApiConfig;
 import ar.edu.utn.frc.tup.p4.usersservice.shared.security.GatewayPrincipal;
+import ar.edu.utn.frc.tup.p4.usersservice.shared.web.ApiException;
 import ar.edu.utn.frc.tup.p4.usersservice.users.dto.*;
 import ar.edu.utn.frc.tup.p4.usersservice.users.entities.WhitelistRequest;
+import ar.edu.utn.frc.tup.p4.usersservice.users.enums.Role;
 import ar.edu.utn.frc.tup.p4.usersservice.users.services.WhitelistService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
@@ -42,7 +44,15 @@ public class WhitelistController {
     @PreAuthorize("hasAnyRole('ADMIN', 'GESTOR')")
     public Map<String, String> agregar(@AuthenticationPrincipal GatewayPrincipal p,
                                        @Valid @RequestBody AddEmailRequest r) {
-        return Map.of("id", whitelist.agregar(p.id(), r.email(), r.role()).toString());
+        Role role = null;
+        if (r.role() != null && !r.role().isBlank()) {
+            try {
+                role = Role.valueOf(r.role());
+            } catch (IllegalArgumentException e) {
+                throw ApiException.validation("Rol invalido: '" + r.role() + "'. Debe ser PROFESSOR o GESTOR.");
+            }
+        }
+        return Map.of("id", whitelist.agregar(p.id(), r.email(), role).toString());
     }
 
     @Operation(summary = "Lista los emails habilitados (ADMIN/GESTOR)")

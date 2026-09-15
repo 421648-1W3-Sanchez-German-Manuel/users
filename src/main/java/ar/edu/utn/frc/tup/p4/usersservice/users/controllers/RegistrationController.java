@@ -51,7 +51,7 @@ public class RegistrationController {
     @ApiResponse(responseCode = "403", description = "`type`: `email-not-whitelisted`.")
     @ApiResponse(responseCode = "409", description = "`type`: `duplicate-email`.")
     @PostMapping("/professor")
-    public void profesor(@Valid @RequestBody ProfessorRegistrationRequest r) {
+    public void profesor(@Valid @RequestBody StaffRegistrationRequest r) {
         registro.registrarProfesor(r.firstNames(), r.lastNames(), r.email(), r.password(), r.termsVersion());
     }
 
@@ -67,7 +67,7 @@ public class RegistrationController {
     @ApiResponse(responseCode = "403", description = "`type`: `email-not-whitelisted`.")
     @ApiResponse(responseCode = "409", description = "`type`: `duplicate-email`.")
     @PostMapping("/gestor")
-    public void gestor(@Valid @RequestBody GestorRegistrationRequest r) {
+    public void gestor(@Valid @RequestBody StaffRegistrationRequest r) {
         registro.registrarGestor(r.firstNames(), r.lastNames(), r.email(), r.password(), r.termsVersion());
     }
 
