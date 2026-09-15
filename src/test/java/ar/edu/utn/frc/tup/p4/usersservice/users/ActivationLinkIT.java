@@ -101,6 +101,19 @@ class ActivationLinkIT extends AbstractIntegrationTest {
         assertThat(estadoDe("act6@utn.edu.ar")).isEqualTo(AccountStatus.PENDING_COURSE);
     }
 
+    @Test
+    void missingInvitationCodeReturnsAControlledError() {
+        String email = "act7@utn.edu.ar";
+        altaAlumno(email);
+        String token = mailSpy.ultimoTokenActivacion();
+        redis.delete("invitacion:" + email);
+
+        assertThatThrownBy(() -> registro.activate(token))
+                .isInstanceOf(ApiException.class)
+                .isNotInstanceOf(NullPointerException.class);
+        assertThat(estadoDe(email)).isEqualTo(AccountStatus.PENDING_EMAIL);
+    }
+
     private String capturar(Runnable r) {
         try { r.run(); return "no-fallo"; } catch (ApiException e) { return e.getMessage(); }
     }

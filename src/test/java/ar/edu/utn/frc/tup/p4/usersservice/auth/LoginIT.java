@@ -70,12 +70,12 @@ class LoginIT extends AbstractIntegrationTest {
 
         assertThat(outbox.count()).isGreaterThan(antes);
         assertThat(outbox.findAll()).anySatisfy(e -> {
-            assertThat(e.getPayload()).contains("EMAIL_2FA");
+            assertThat(e.getPayload()).contains("TWO-FACTOR-EMAIL-PREPARED");
             assertThat(e.getPayload()).contains("f2a" + SUF);
             // The mail goes out ALREADY BUILT: subject + html, not a templateId.
-            assertThat(e.getPayload()).contains("\"asunto\"").contains("\"html\"");
+            assertThat(e.getPayload()).contains("\"subject\"").contains("\"html\"");
             // And the code NEVER appears in the audit event or in a log.
-            assertThat(e.getTopic()).isNotBlank();
+            assertThat(e.getDestinationTopic()).isEqualTo("notification-events");
         });
     }
 

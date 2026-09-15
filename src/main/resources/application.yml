@@ -140,17 +140,23 @@ users:
     twofactor-max-challenges: 5  # mails de 2FA por email
     twofactor-window: PT15M
   kafka:
-    # DEC-34: a topic name is configuration, never a constant.
-    #
-    # The KEYS are ours and go in English like the rest of the code. The VALUES
-    # do not: `tema-NN-<subsystem>.<event>.vN` is the convention agreed across
-    # the ten subsystems of the platform, and two of these four topics belong to
-    # other teams. Renaming them on this side breaks whoever consumes them.
+    # One topic per business domain, as required by the platform Kafka standard.
     topics:
-      audit:              ${TOPIC_AUDIT:tema-01-users.auditoria.v1}
-      student-registered: ${TOPIC_STUDENT_REGISTERED:tema-01-users.alumno-registrado.v1}
-      notifications:      ${TOPIC_NOTIFICATIONS:tema-XX-notificaciones.email.v1}
-      course-validation:  ${TOPIC_COURSE_VALIDATION:tema-02-cursos.validacion-resuelta.v1}
+      user-events:         ${TOPIC_USER_EVENTS:user-events}
+      notification-events: ${TOPIC_NOTIFICATION_EVENTS:notification-events}
+      course-events:       ${TOPIC_COURSE_EVENTS:course-events}
+    # Draft consumed contract (Courses). Change via env/properties when agreed.
+    course-validation:
+      event-type:    ${COURSE_VALIDATION_EVENT_TYPE:COURSE-VALIDATION-RESOLVED}
+      event-version: ${COURSE_VALIDATION_EVENT_VERSION:1}
+      producer:      ${COURSE_VALIDATION_PRODUCER:tema-02-cursos}
+      payload:
+        user-id:   ${COURSE_VALIDATION_FIELD_USER_ID:userId}
+        result:    ${COURSE_VALIDATION_FIELD_RESULT:result}
+        course-id: ${COURSE_VALIDATION_FIELD_COURSE_ID:courseId}
+  outbox:
+    poller-enabled: ${OUTBOX_POLLER_ENABLED:true}
+    polling-delay: ${OUTBOX_POLLING_DELAY:PT3S}
 
 # ---------------------------------------------------------------------------
 # OpenAPI / Swagger UI

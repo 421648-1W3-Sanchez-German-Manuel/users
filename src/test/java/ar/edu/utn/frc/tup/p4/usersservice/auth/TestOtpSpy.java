@@ -10,6 +10,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Primary;
 
 import java.util.Map;
+import java.util.UUID;
 
 /**
  * Captura el code del segundo factor desde el MAIL, igual que TestResetSpy.
@@ -32,11 +33,11 @@ public class TestOtpSpy extends NotificationEventPublisher {
     }
 
     @Override
-    public void enviar(EmailType tipo, String to, Map<String, Object> vars) {
+    public void send(EmailType tipo, UUID userId, String to, Map<String, Object> vars) {
         if (tipo == EmailType.TWO_FACTOR_CODE) {
             this.ultimo = (String) vars.get("code");
         }
-        super.enviar(tipo, to, vars);
+        super.send(tipo, userId, to, vars);
     }
 
     /** El ultimo code de 2FA que salio por mail, o null si todavia no salio ninguno. */

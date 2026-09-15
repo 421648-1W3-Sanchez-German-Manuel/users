@@ -56,4 +56,10 @@ class EmailTypeTest extends AbstractIntegrationTest {
                 .count();
         assertThat(duplicates).isEqualTo(1);
     }
+
+    @ParameterizedTest
+    @EnumSource(EmailType.class)
+    void eachEventTypeUsesUppercaseWordsSeparatedByHyphens(EmailType type) {
+        assertThat(type.eventType()).matches("[A-Z0-9]+(?:-[A-Z0-9]+)*");
+    }
 }

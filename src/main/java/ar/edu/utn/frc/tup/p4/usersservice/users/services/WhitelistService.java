@@ -33,10 +33,11 @@ public class WhitelistService {
         if (efectivo != Role.PROFESSOR && efectivo != Role.GESTOR) {
             throw ApiException.validation("La whitelist solo admite PROFESSOR o GESTOR.");
         }
-        if (lista.existsByEmailAndDeletedAtIsNull(email)) {
+        String normalizado = email.toLowerCase(Locale.ROOT);
+        if (lista.existsByEmailAndDeletedAtIsNull(normalizado)) {
             throw ApiException.duplicateEmail();
         }
-        return lista.saveAndFlush(EmailWhitelist.create(email, efectivo, actor)).getId();
+        return lista.saveAndFlush(EmailWhitelist.create(normalizado, efectivo, actor)).getId();
     }
 
     @Transactional
@@ -64,7 +65,10 @@ public class WhitelistService {
         // GESTOR now attends the review queue too, so it must hear about new requests as well.
         usuarios.findAll().stream()
                 .filter(u -> (u.getRole() == Role.ADMIN || u.getRole() == Role.GESTOR) && u.getDeletedAt() == null)
-                .forEach(a -> mails.enviar(EmailType.WHITELIST_SUBMISSION, a.getEmail(),
+                .forEach(a -> mails.send(
+                        EmailType.WHITELIST_SUBMISSION,
+                        a.getId(),
+                        a.getEmail(),
                         Map.of("emailSolicitado", r.getRequestedEmail(), "reason", reason)));
         return r.getId();
     }
@@ -98,7 +102,7 @@ public class WhitelistService {
         solicitudes.save(r);
 
         usuarios.findByIdAndDeletedAtIsNull(r.getRequestedBy()).ifPresent(prof ->
-                mails.enviar(EmailType.WHITELIST_DECISION, prof.getEmail(), Map.of(
+                mails.send(EmailType.WHITELIST_DECISION, prof.getId(), prof.getEmail(), Map.of(
                         "firstNames", prof.getFirstNames(),
                         "emailSolicitado", r.getRequestedEmail(),
                         "resultado", approve ? RequestStatus.APPROVED.name()

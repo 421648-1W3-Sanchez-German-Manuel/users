@@ -52,4 +52,26 @@ class SchemaIT extends AbstractIntegrationTest {
                 String.class);
         assertThat(malas).isEmpty();
     }
+
+    @Test
+    void outbox_has_the_transactional_relay_columns() {
+        List<String> columns = jdbc.queryForList(
+                "SELECT column_name FROM information_schema.columns "
+                        + "WHERE table_schema = DATABASE() AND table_name = 'outbox_events'",
+                String.class);
+
+        assertThat(columns).contains(
+                "outbox_id",
+                "event_id",
+                "event_type",
+                "aggregate_type",
+                "aggregate_id",
+                "destination_topic",
+                "message_key",
+                "payload",
+                "status",
+                "attempts",
+                "created_at",
+                "published_at");
+    }
 }

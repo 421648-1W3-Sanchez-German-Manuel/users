@@ -58,9 +58,8 @@ class TimestampIT extends AbstractIntegrationTest {
     @Test
     void el_sobre_de_eventos_usa_ISO_8601_UTC() {
         // DEC-12: one single representation of time across the whole system.
-        String ts = ar.edu.utn.frc.tup.p4.usersservice.shared.events.EventEnvelope
-                .de("X", "y").timestamp();
-        assertThat(ts).endsWith("Z");
-        assertThat(Instant.parse(ts)).isNotNull();
+        Instant timestamp = ar.edu.utn.frc.tup.p4.usersservice.shared.events.EventEnvelope
+                .create("TEST-EVENT", 1, "payload").timestamp();
+        assertThat(timestamp.toString()).endsWith("Z");
     }
 }

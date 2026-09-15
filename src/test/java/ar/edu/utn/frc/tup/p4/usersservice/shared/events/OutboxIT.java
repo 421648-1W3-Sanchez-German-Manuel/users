@@ -1,6 +1,7 @@
 package ar.edu.utn.frc.tup.p4.usersservice.shared.events;
 
 import ar.edu.utn.frc.tup.p4.usersservice.AbstractIntegrationTest;
+import ar.edu.utn.frc.tup.p4.usersservice.shared.events.entities.OutboxStatus;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.transaction.annotation.Transactional;
@@ -33,16 +34,26 @@ class OutboxIT extends AbstractIntegrationTest {
         // un delta contra `outbox.count()` en vez de afirmar sobre la tabla
         // entera.
         String topico = "topico.test." + UUID.randomUUID();
-        publisher.publicar(topico, "EVENTO_TEST", new Payload("valor"));
+        UUID aggregateId = UUID.randomUUID();
+        publisher.publish(
+                topico,
+                aggregateId.toString(),
+                "TEST-EVENT",
+                1,
+                "test-aggregate",
+                aggregateId,
+                new Payload("valor"));
 
         var pendientes = outbox.findAll().stream()
-                .filter(event -> event.getPublishedAt() == null)
-                .filter(event -> topico.equals(event.getTopic()))
+                .filter(event -> event.getStatus() == OutboxStatus.PENDING)
+                .filter(event -> topico.equals(event.getDestinationTopic()))
                 .toList();
 
         assertThat(pendientes).hasSize(1);
-        assertThat(pendientes.getFirst().getTopic()).isEqualTo(topico);
-        assertThat(pendientes.getFirst().getPayload()).contains("\"eventType\":\"EVENTO_TEST\"");
+        assertThat(pendientes.getFirst().getDestinationTopic()).isEqualTo(topico);
+        assertThat(pendientes.getFirst().getMessageKey()).isEqualTo(aggregateId.toString());
+        assertThat(pendientes.getFirst().getPayload()).contains("\"eventType\":\"TEST-EVENT\"");
+        assertThat(pendientes.getFirst().getPayload()).contains("\"eventVersion\":1");
         assertThat(pendientes.getFirst().getPayload()).contains("\"producer\":\"tema-01-users\"");
     }
 
@@ -51,7 +62,15 @@ class OutboxIT extends AbstractIntegrationTest {
         long antes = outbox.count();
 
         assertThatThrownBy(() -> tx.executeWithoutResult(status -> {
-            publisher.publicar("topico.test.v1", "EVENTO_TEST", new Payload("x"));
+            UUID aggregateId = UUID.randomUUID();
+            publisher.publish(
+                    "test-events",
+                    aggregateId.toString(),
+                    "TEST-EVENT",
+                    1,
+                    "test-aggregate",
+                    aggregateId,
+                    new Payload("x"));
             throw new IllegalStateException("intentional rollback");
         })).isInstanceOf(IllegalStateException.class);
 

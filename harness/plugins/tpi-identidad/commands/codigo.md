@@ -29,8 +29,8 @@ docker compose exec -T mysql mysql -uroot -p"$MYSQL_ROOT_PASSWORD" users -N \
       ORDER BY created_at DESC LIMIT 5;"
 ```
 
-La tabla se llama `outbox_events` y la columna del tópico es `topic`, no
-`event_type`.
+La tabla se llama `outbox_events`; el tópico está en `destination_topic` y el
+tipo de evento está en `event_type`.
 
 De ahí salen los dos formatos:
 
