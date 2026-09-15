@@ -1360,6 +1360,7 @@ public class AuthController { … }
 | `POST /api/users/public/auth/password/reset/confirm` | `auth/` | **confirmar** — consume el token de 1 uso y cambia la password · **DEC-16** |
 | `POST /api/users/public/registration/student` | `users/` | Alta de STUDENT (dominio institucional + código de invitación) |
 | `POST /api/users/public/registration/professor` | `users/` | Alta de PROFESSOR (contra whitelist) |
+| `POST /api/users/public/registration/gestor` | `users/` | Alta de GESTOR (contra whitelist, mismo flujo que PROFESSOR) |
 | `POST /api/users/public/registration/activate` | `users/` | **DEC-33** · activación por **enlace** de un solo uso; el body lleva el `token` que la pantalla del frontend saca del query string |
 | `POST /api/users/public/registration/resend-activation` | `users/` | **DEC-33** · reenvía el enlace de activación e **invalida el anterior**. Cierra INC-20 |
 | `POST /api/users/public/auth/2fa/resend` | `auth/` | **DEC-33** · reenvía el código de 2FA. Cierra INC-20 |
@@ -1374,16 +1375,17 @@ public class AuthController { … }
 | `POST /api/users/auth/password/change` | `auth/` | autenticado | exento de PASSWORD |
 | `GET /api/users/me` | `users/` | autenticado | **exento de los 3** |
 | `PATCH /api/users/me/onboarding` | `users/` | autenticado | exento de ONBOARDING |
+| `GET /api/users` | `users/` | `hasAnyRole('ADMIN', 'GESTOR')` | los 3 · el GESTOR ve **solo PROFESSOR/GESTOR** (capa 2) |
 | `POST /api/users` | `users/` | `hasRole('ADMIN')` | los 3 |
-| `DELETE /api/users/{id}` | `users/` | `hasRole('ADMIN')` | los 3 |
-| `PATCH /api/users/{id}/role` | `users/` | `hasRole('ADMIN')` | los 3 |
+| `DELETE /api/users/{id}` | `users/` | `hasAnyRole('ADMIN', 'GESTOR')` | los 3 · el GESTOR solo puede dar de baja PROFESSOR/GESTOR, nunca a si mismo (capa 2) |
+| `PATCH /api/users/{id}/role` | `users/` | `hasAnyRole('ADMIN', 'GESTOR')` | los 3 · el GESTOR no puede otorgar/tocar el rol ADMIN ni tocar STUDENT (capa 2) |
 | `GET /api/users/profile/{id}` | `users/` | `hasRole('MS')` + scope | **N/A** (token de servicio) |
-| `POST /api/users/whitelist` | `users/` | `hasRole('ADMIN')` | los 3 · **DEC-29** |
-| `GET /api/users/whitelist` | `users/` | `hasRole('ADMIN')` | los 3 · **DEC-29** |
-| `DELETE /api/users/whitelist/{id}` | `users/` | `hasRole('ADMIN')` | los 3 · **DEC-29** |
+| `POST /api/users/whitelist` | `users/` | `hasAnyRole('ADMIN', 'GESTOR')` | los 3 · **DEC-29** · `role` opcional, default `PROFESSOR` |
+| `GET /api/users/whitelist` | `users/` | `hasAnyRole('ADMIN', 'GESTOR')` | los 3 · **DEC-29** |
+| `DELETE /api/users/whitelist/{id}` | `users/` | `hasAnyRole('ADMIN', 'GESTOR')` | los 3 · **DEC-29** |
 | `POST /api/users/whitelist/requests` | `users/` | `hasRole('PROFESSOR')` | los 3 · **DEC-29** · crea la solicitud |
-| `GET /api/users/whitelist/requests` | `users/` | `hasAnyRole('ADMIN','PROFESSOR')` | los 3 · **DEC-29** · el PROFESSOR ve **solo las suyas** (capa 2) |
-| `PATCH /api/users/whitelist/requests/{id}` | `users/` | `hasRole('ADMIN')` | los 3 · **DEC-29** · aprobar / rechazar |
+| `GET /api/users/whitelist/requests` | `users/` | `hasAnyRole('ADMIN', 'GESTOR')` | los 3 · **DEC-29** · cola completa, pendientes y resueltas |
+| `PATCH /api/users/whitelist/requests/{id}` | `users/` | `hasAnyRole('ADMIN', 'GESTOR')` | los 3 · **DEC-29** · aprobar / rechazar |
 
 ### 14.3 Lo que desapareció
 
@@ -1443,6 +1445,18 @@ En `users-service` **no hay una regla que codear**: se cumple por diseño, porqu
 - `GET /api/users/profile/{id}` **exige rol `MS`**, nunca un rol de persona.
 
 La única forma de que el dato de un usuario llegue a otro contexto es vía un microservicio (Cursos, Desafíos) que lo pide con token de servicio para resolver su propia lógica — no es la persona consultando directamente. **Queda anotado como derivado del diseño, no como capa 2 nueva.** Ver §18 / INC-10: un documento describe un flujo que lo contradice.
+
+### 15.5 Ventana de staleness del rol en el token
+
+`PATCH /api/users/{id}/role` (y la baja, `DELETE /api/users/{id}`) cambian el estado en la
+base **de inmediato**, pero el `roles`/`accountStatus` que ya lleva el access token del
+afectado no se actualiza hasta que ese token expire — ni el Gateway ni el resto de los
+microservicios vuelven a consultar `users-service` por request, solo validan firma y `exp`
+(`access-ttl: PT10M` en `application.yml`). Durante esa ventana (hasta 10 minutos) la cuenta
+sigue autorizada con el rol/estado viejo en toda la plataforma, aunque `users-service` ya la
+vea actualizada. No hay revocación activa de access tokens: es la misma decisión de diseño
+que el refresh rotativo de `DEC-22` acepta para el resto del sistema, y queda documentada acá
+como limitación conocida, no como algo pendiente de arreglar.
 
 ---
 

@@ -3,6 +3,7 @@ package ar.edu.utn.frc.tup.p4.usersservice.users;
 import ar.edu.utn.frc.tup.p4.usersservice.AbstractIntegrationTest;
 import ar.edu.utn.frc.tup.p4.usersservice.shared.web.ApiException;
 import ar.edu.utn.frc.tup.p4.usersservice.users.dto.AdminDeactivationRequest;
+import ar.edu.utn.frc.tup.p4.usersservice.users.dto.UserListItemResponse;
 import ar.edu.utn.frc.tup.p4.usersservice.users.entities.User;
 import ar.edu.utn.frc.tup.p4.usersservice.users.enums.AccountStatus;
 import ar.edu.utn.frc.tup.p4.usersservice.users.enums.Role;
@@ -183,5 +184,21 @@ class AdminRulesIT extends AbstractIntegrationTest {
 
         assertThat(repo.findById(profesor.getId()))
                 .get().extracting(User::getRole).isEqualTo(Role.GESTOR);
+    }
+
+    @Test
+    void el_listar_de_un_GESTOR_no_incluye_ADMIN_ni_STUDENT() {
+        User gestor = conRol(Role.GESTOR, "gestor-listar@utn.edu.ar");
+        User otroGestor = conRol(Role.GESTOR, "obj-listar-gestor@utn.edu.ar");
+        User profesor = conRol(Role.PROFESSOR, "obj-listar-prof@utn.edu.ar");
+        admin("obj-listar-admin@utn.edu.ar");
+        conRol(Role.STUDENT, "obj-listar-student@utn.edu.ar");
+
+        List<UserListItemResponse> listado = users.listar(gestor.getId());
+
+        assertThat(listado).extracting(UserListItemResponse::role)
+                .containsOnly(Role.PROFESSOR, Role.GESTOR);
+        assertThat(listado).extracting(UserListItemResponse::id)
+                .contains(otroGestor.getId().toString(), profesor.getId().toString());
     }
 }
