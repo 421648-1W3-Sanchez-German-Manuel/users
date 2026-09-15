@@ -50,10 +50,18 @@ public class UserService {
                 u.getGithubUsername(), u.getAvatarRef());
     }
 
-    /** ADMIN directory: active accounts, newest first. */
+    /**
+     * ADMIN directory: every active account, newest first. A GESTOR gets the
+     * same shape but scoped to PROFESSOR/GESTOR accounts — it must never see
+     * ADMIN or STUDENT records here.
+     */
     @Transactional(readOnly = true)
-    public List<UserListItemResponse> listar() {
-        return repo.findByDeletedAtIsNullOrderByCreatedAtDesc().stream()
+    public List<UserListItemResponse> listar(UUID actorId) {
+        boolean esGestor = buscar(actorId).getRole() == Role.GESTOR;
+        List<User> usuarios = esGestor
+                ? repo.findByRoleInAndDeletedAtIsNullOrderByCreatedAtDesc(List.of(Role.PROFESSOR, Role.GESTOR))
+                : repo.findByDeletedAtIsNullOrderByCreatedAtDesc();
+        return usuarios.stream()
                 .map(u -> new UserListItemResponse(u.getId().toString(), u.getFirstNames(),
                         u.getLastNames(), u.getLegajo(), u.getEmail(), u.getRole(),
                         u.getAccountStatus(), u.getCreatedAt()))
@@ -76,8 +84,9 @@ public class UserService {
     public void deactivate(UUID actorId, UUID objetivoId, AdminDeactivationRequest req) {
         User objetivo = buscar(objetivoId);
 
-        // A GESTOR manages PROFESSOR and GESTOR accounts, never ADMIN.
-        if (buscar(actorId).getRole() == Role.GESTOR && objetivo.getRole() == Role.ADMIN) {
+        // A GESTOR manages PROFESSOR and GESTOR accounts only — never ADMIN or STUDENT.
+        if (buscar(actorId).getRole() == Role.GESTOR
+                && objetivo.getRole() != Role.PROFESSOR && objetivo.getRole() != Role.GESTOR) {
             throw ApiException.accessDenied();
         }
 
@@ -107,9 +116,11 @@ public class UserService {
         User objetivo = buscar(objetivoId);
 
         // A GESTOR can only move PROFESSOR/GESTOR accounts between those two
-        // roles: it can neither touch an existing ADMIN nor grant ADMIN.
-        if (buscar(actorId).getRole() == Role.GESTOR
-                && (objetivo.getRole() == Role.ADMIN || nuevo == Role.ADMIN)) {
+        // roles: it can neither touch an existing ADMIN or STUDENT, nor grant
+        // ADMIN or STUDENT.
+        boolean fueraDeAlcance = (objetivo.getRole() != Role.PROFESSOR && objetivo.getRole() != Role.GESTOR)
+                || (nuevo != Role.PROFESSOR && nuevo != Role.GESTOR);
+        if (buscar(actorId).getRole() == Role.GESTOR && fueraDeAlcance) {
             throw ApiException.accessDenied();
         }
 

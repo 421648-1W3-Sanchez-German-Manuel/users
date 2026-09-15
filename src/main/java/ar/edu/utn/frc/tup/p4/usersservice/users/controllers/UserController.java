@@ -88,12 +88,16 @@ public class UserController {
 
     /** ADMIN/GESTOR directory. Only active accounts, newest first. */
     @Operation(summary = "Directorio de usuarios (ADMIN/GESTOR)",
-               description = "Solo cuentas ACTIVAS, de la mas nueva a la mas vieja.")
+               description = """
+                       Solo cuentas ACTIVAS, de la mas nueva a la mas vieja.
+
+                       El ADMIN ve el directorio completo. El GESTOR ve solo cuentas
+                       PROFESSOR/GESTOR: nunca ADMIN ni STUDENT.""")
     @ApiResponse(responseCode = "200", description = "Listado de cuentas activas.")
     @GetMapping
     @PreAuthorize("hasAnyRole('ADMIN', 'GESTOR')")
-    public List<UserListItemResponse> listar() {
-        return users.listar();
+    public List<UserListItemResponse> listar(@AuthenticationPrincipal GatewayPrincipal p) {
+        return users.listar(p.id());
     }
 
     /**
