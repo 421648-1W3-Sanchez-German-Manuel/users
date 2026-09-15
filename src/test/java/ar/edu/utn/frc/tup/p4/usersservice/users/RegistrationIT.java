@@ -101,6 +101,35 @@ class RegistrationIT extends AbstractIntegrationTest {
     }
 
     @Test
+    void gestor_en_la_whitelist_se_registra_igual_que_un_alumno() {
+        String email = emailUnico("gestor");
+        whitelist.saveAndFlush(EmailWhitelist.create(email, Role.GESTOR, UUID.randomUUID()));
+
+        registro.registrarGestor("Gustavo", "Estor", email, "passwordvalida1", "v1");
+
+        assertThat(repo.findByEmailAndDeletedAtIsNull(email)).get()
+                .extracting(u -> u.getAccountStatus()).isEqualTo(AccountStatus.PENDING_EMAIL);
+        assertThat(repo.findByEmailAndDeletedAtIsNull(email)).get()
+                .extracting(u -> u.getRole()).isEqualTo(Role.GESTOR);
+    }
+
+    /**
+     * Un email whitelisteado solo como PROFESSOR no habilita el alta de
+     * GESTOR: cada rol tiene su propia fila (existsByEmailAndRoleAndDeletedAtIsNull).
+     */
+    @Test
+    void gestor_con_whitelist_de_profesor_es_rechazado() {
+        String email = emailUnico("profnogestor");
+        whitelist.saveAndFlush(EmailWhitelist.create(email, Role.PROFESSOR, UUID.randomUUID()));
+
+        assertThatThrownBy(() -> registro.registrarGestor("Gustavo", "Estor", email, "passwordvalida1", "v1"))
+                .isInstanceOf(ApiException.class)
+                .satisfies(ex -> assertThat(((ApiException) ex).getStatus()).isEqualTo(HttpStatus.FORBIDDEN));
+
+        assertThat(repo.findByEmailAndDeletedAtIsNull(email)).isEmpty();
+    }
+
+    @Test
     void profesor_fuera_de_la_whitelist_es_rechazado() {
         String email = emailUnico("noprof");
 

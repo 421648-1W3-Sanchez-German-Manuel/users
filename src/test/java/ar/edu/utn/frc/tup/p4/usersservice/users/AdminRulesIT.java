@@ -41,6 +41,11 @@ class AdminRulesIT extends AbstractIntegrationTest {
         return repo.saveAndFlush(u);
     }
 
+    private User conRol(Role role, String email) {
+        User u = User.create("Nom", "Bre", email, encoder.encode("passwordvalida1"), role, "v1");
+        return repo.saveAndFlush(u);
+    }
+
     private AdminDeactivationRequest confirmacion(String username) {
         return new AdminDeactivationRequest("passwordvalida1", "123456", username);
     }
@@ -113,5 +118,70 @@ class AdminRulesIT extends AbstractIntegrationTest {
         User unico = admin("role@utn.edu.ar");
         assertThatThrownBy(() -> users.changeRole(unico.getId(), unico.getId(), Role.PROFESSOR))
                 .isInstanceOf(ApiException.class);
+    }
+
+    @Test
+    void un_GESTOR_no_puede_dar_de_baja_a_un_ADMIN() {
+        User gestor = conRol(Role.GESTOR, "gestor-baja-admin@utn.edu.ar");
+        User objetivo = admin("obj-baja-admin@utn.edu.ar");
+        assertThatThrownBy(() -> users.deactivate(gestor.getId(), objetivo.getId(),
+                confirmacion("obj-baja-admin@utn.edu.ar")))
+                .isInstanceOf(ApiException.class);
+    }
+
+    @Test
+    void un_GESTOR_no_puede_dar_de_baja_a_un_STUDENT() {
+        User gestor = conRol(Role.GESTOR, "gestor-baja-student@utn.edu.ar");
+        User objetivo = conRol(Role.STUDENT, "obj-baja-student@utn.edu.ar");
+        assertThatThrownBy(() -> users.deactivate(gestor.getId(), objetivo.getId(),
+                new AdminDeactivationRequest("na", "na", "na")))
+                .isInstanceOf(ApiException.class);
+    }
+
+    @Test
+    void un_GESTOR_puede_dar_de_baja_a_un_PROFESSOR_o_GESTOR() {
+        User gestor = conRol(Role.GESTOR, "gestor-baja-ok@utn.edu.ar");
+        User profesor = conRol(Role.PROFESSOR, "obj-baja-prof@utn.edu.ar");
+        User otroGestor = conRol(Role.GESTOR, "obj-baja-gestor@utn.edu.ar");
+
+        users.deactivate(gestor.getId(), profesor.getId(), new AdminDeactivationRequest("na", "na", "na"));
+        users.deactivate(gestor.getId(), otroGestor.getId(), new AdminDeactivationRequest("na", "na", "na"));
+
+        assertThat(repo.findById(profesor.getId()))
+                .get().extracting(User::getAccountStatus).isEqualTo(AccountStatus.DEACTIVATED);
+        assertThat(repo.findById(otroGestor.getId()))
+                .get().extracting(User::getAccountStatus).isEqualTo(AccountStatus.DEACTIVATED);
+    }
+
+    @Test
+    void un_GESTOR_no_puede_otorgar_ni_tocar_el_rol_ADMIN() {
+        User gestor = conRol(Role.GESTOR, "gestor-rol-admin@utn.edu.ar");
+        User admin = admin("obj-rol-admin@utn.edu.ar");
+        User profesor = conRol(Role.PROFESSOR, "obj-rol-a-admin@utn.edu.ar");
+
+        assertThatThrownBy(() -> users.changeRole(gestor.getId(), admin.getId(), Role.PROFESSOR))
+                .isInstanceOf(ApiException.class);
+        assertThatThrownBy(() -> users.changeRole(gestor.getId(), profesor.getId(), Role.ADMIN))
+                .isInstanceOf(ApiException.class);
+    }
+
+    @Test
+    void un_GESTOR_no_puede_cambiar_el_rol_de_un_STUDENT() {
+        User gestor = conRol(Role.GESTOR, "gestor-rol-student@utn.edu.ar");
+        User student = conRol(Role.STUDENT, "obj-rol-student@utn.edu.ar");
+
+        assertThatThrownBy(() -> users.changeRole(gestor.getId(), student.getId(), Role.PROFESSOR))
+                .isInstanceOf(ApiException.class);
+    }
+
+    @Test
+    void un_GESTOR_puede_mover_cuentas_entre_PROFESSOR_y_GESTOR() {
+        User gestor = conRol(Role.GESTOR, "gestor-rol-ok@utn.edu.ar");
+        User profesor = conRol(Role.PROFESSOR, "obj-rol-ok@utn.edu.ar");
+
+        users.changeRole(gestor.getId(), profesor.getId(), Role.GESTOR);
+
+        assertThat(repo.findById(profesor.getId()))
+                .get().extracting(User::getRole).isEqualTo(Role.GESTOR);
     }
 }
