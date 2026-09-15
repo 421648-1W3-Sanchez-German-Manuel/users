@@ -152,4 +152,6 @@ users:
       notifications:      ${TOPIC_NOTIFICATIONS:tema-XX-notificaciones.email.v1}
       course-validation:  ${TOPIC_COURSE_VALIDATION:tema-02-cursos.validacion-resuelta.v1}
 
-
+logging:
+  pattern:
+    level: "%5p [${spring.application.name},%X{traceId:-},%X{spanId:-},%X{requestId:-}]"
