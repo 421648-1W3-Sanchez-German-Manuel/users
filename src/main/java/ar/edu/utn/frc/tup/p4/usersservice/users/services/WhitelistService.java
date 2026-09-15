@@ -29,10 +29,11 @@ public class WhitelistService {
 
     @Transactional
     public UUID agregar(UUID actor, String email, Role role) {
-        if (role != Role.PROFESSOR && role != Role.GESTOR) {
+        Role efectivo = role == null ? Role.PROFESSOR : role;
+        if (efectivo != Role.PROFESSOR && efectivo != Role.GESTOR) {
             throw ApiException.validation("La whitelist solo admite PROFESSOR o GESTOR.");
         }
-        return lista.saveAndFlush(EmailWhitelist.create(email, role, actor)).getId();
+        return lista.saveAndFlush(EmailWhitelist.create(email, efectivo, actor)).getId();
     }
 
     @Transactional
@@ -74,9 +75,17 @@ public class WhitelistService {
         WhitelistRequest r = solicitudes.findById(solicitudId).orElseThrow(ApiException::accessDenied);
 
         if (approve) {
-            r.approve(adminId);
             // solicitar() is PROFESSOR-only (a colleague referral), so the role is always PROFESSOR.
-            if (!lista.existsByEmailAndDeletedAtIsNull(r.getRequestedEmail())) {
+            // The active_email unique key means an email can only be whitelisted for one role at
+            // a time: if it's already active under GESTOR (or another role), approving here would
+            // mark the request APPROVED without ever inserting a usable PROFESSOR row.
+            boolean yaProfesor = lista.existsByEmailAndRoleAndDeletedAtIsNull(r.getRequestedEmail(), Role.PROFESSOR);
+            if (!yaProfesor && lista.existsByEmailAndDeletedAtIsNull(r.getRequestedEmail())) {
+                throw ApiException.validation(
+                        "El email ya esta habilitado con otro rol. Sacalo de la whitelist antes de aprobar esta solicitud.");
+            }
+            r.approve(adminId);
+            if (!yaProfesor) {
                 lista.save(EmailWhitelist.create(r.getRequestedEmail(), Role.PROFESSOR, adminId));
             }
         } else {
