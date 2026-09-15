@@ -20,7 +20,7 @@ import java.util.*;
      description = """
              Emails habilitados para registrarse como profesor, y la cola de solicitudes
              que un ADMIN revisa.""")
-@SecurityRequirement(name = OpenApiConfig.BEARER_SCHEME)
+@SecurityRequirement(name = OpenApiConfig.COOKIE_SCHEME)
 @RestController
 @RequestMapping("${app.api.private-path}/whitelist")
 public class WhitelistController {

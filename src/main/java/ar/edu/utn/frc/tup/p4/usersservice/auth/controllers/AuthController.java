@@ -14,6 +14,7 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.Map;
+import java.util.regex.Pattern;
 
 @Tag(name = "Auth (publico)",
      description = "Login en dos fases, refresh y recupero de contraseña. Anonimo: no lleva token.")
@@ -92,10 +93,22 @@ public class AuthController {
         if (refreshJti == null || refreshJti.isBlank()) {
             throw ApiException.sessionClosed();
         }
+        if (!JTI_PATTERN.matcher(refreshJti).matches()) {
+            throw ApiException.validation("refreshToken tiene que ser un UUID");
+        }
         TokenResponse tokens = auth.refrescar(refreshJti);
         setSessionCookies(response, tokens);
         return SessionResponse.from(tokens);
     }
+
+    /**
+     * El jti es un UUID: sin este chequeo, una cookie fu_rt malformada no da
+     * 400 sino que llega a Redis y sale por una clave que nunca matchea,
+     * indistinguible de una sesion cerrada. Antes de mover el refresh a la
+     * cookie esto lo validaba el @Pattern de RefreshRequest via @Valid.
+     */
+    private static final Pattern JTI_PATTERN =
+            Pattern.compile("^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$");
 
     private void setSessionCookies(HttpServletResponse response, TokenResponse tokens) {
         response.addHeader(HttpHeaders.SET_COOKIE, cookies.access(tokens.accessToken()).toString());

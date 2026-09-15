@@ -20,7 +20,7 @@ import org.springframework.web.bind.annotation.*;
 
 @Tag(name = "Auth (sesion)",
      description = "Operaciones sobre la sesion propia. Exigen un access token vigente.")
-@SecurityRequirement(name = OpenApiConfig.BEARER_SCHEME)
+@SecurityRequirement(name = OpenApiConfig.COOKIE_SCHEME)
 @RestController
 @RequestMapping("${app.api.private-path}/auth")
 public class AuthPrivateController {

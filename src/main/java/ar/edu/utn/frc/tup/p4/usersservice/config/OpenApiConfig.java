@@ -1,5 +1,6 @@
 package ar.edu.utn.frc.tup.p4.usersservice.config;
 
+import ar.edu.utn.frc.tup.p4.usersservice.auth.services.SessionCookieService;
 import io.swagger.v3.oas.models.Components;
 import io.swagger.v3.oas.models.OpenAPI;
 import io.swagger.v3.oas.models.info.Info;
@@ -20,20 +21,28 @@ import java.util.Map;
 /**
  * El spec de OpenAPI del servicio.
  *
- * <p><b>Por que el esquema es Bearer y no los headers X-*.</b> Este servicio NO
- * valida JWT (DEC-08): recibe la identidad ya resuelta en {@code X-User-Id} /
- * {@code X-User-Roles}, que inyecta el gateway. La tentacion es documentar esos
- * headers como el mecanismo de auth, y estaria mal por dos motivos:
+ * <p><b>Por que el esquema es una cookie y no Bearer ni los headers X-*.</b>
+ * Este servicio NO valida JWT (DEC-08): recibe la identidad ya resuelta en
+ * {@code X-User-Id} / {@code X-User-Roles}, que inyecta el gateway. Documentar
+ * esos headers como el mecanismo de auth estaria mal por dos motivos:
  *
  * <ol>
  *   <li>Quien lee esta pantalla la abre por nginx:3000, asi que su "Try it out"
- *       sale por nginx -> gateway -> aca. Lo que tiene que mandar es el Bearer;
- *       los X-* los pone el gateway en el camino.</li>
+ *       sale por nginx -> gateway -> aca. Los X-* los pone el gateway en el
+ *       camino, el cliente nunca los manda.</li>
  *   <li>Documentar los X-* como algo que el cliente manda es documentar el
  *       agujero del no-negociable 1: esos headers son reservados y el gateway
  *       los pisa. Un ejemplo copiable que los mande a mano es una invitacion a
  *       intentar justamente lo que el diseño prohibe.</li>
  * </ol>
+ *
+ * <p>Tampoco es Bearer por header: el gateway (spec "Sesion en Cookies",
+ * decision 3 de {@code PrivateRouteGuard}) exige que un principal de tipo
+ * persona llegue por la cookie {@code fu_at} y rechaza con 401 el mismo token
+ * si viaja por {@code Authorization}. Documentar Bearer invitaria a pegar el
+ * access token en el header de Swagger UI y ver un 401 enganoso. Como esta
+ * pantalla se abre bajo el mismo origen que la API, el navegador ya manda la
+ * cookie sola despues del login; no hay nada que tipear.
  *
  * <p>No se declara {@code servers}: el spec se sirve bajo el mismo origen que
  * la API (nginx:3000), asi que Swagger UI resuelve relativo y "Try it out"
@@ -44,7 +53,7 @@ import java.util.Map;
 public class OpenApiConfig {
 
     /** El nombre con el que los controllers privados referencian el esquema. */
-    public static final String BEARER_SCHEME = "bearerAuth";
+    public static final String COOKIE_SCHEME = "cookieAuth";
 
     @Bean
     OpenAPI usersServiceOpenApi() {
@@ -66,14 +75,20 @@ public class OpenApiConfig {
 
                                 Rutas bajo `/api/users/public/**` son anonimas; el resto exige
                                 un access token vigente."""))
-                .components(new Components().addSecuritySchemes(BEARER_SCHEME,
+                .components(new Components().addSecuritySchemes(COOKIE_SCHEME,
                         new SecurityScheme()
-                                .type(SecurityScheme.Type.HTTP)
-                                .scheme("bearer")
-                                .bearerFormat("JWT")
+                                .type(SecurityScheme.Type.APIKEY)
+                                .in(SecurityScheme.In.COOKIE)
+                                .name(SessionCookieService.ACCESS_COOKIE)
                                 .description("""
-                                        El access token que devuelve `POST /api/users/public/auth/2fa/verify`.
-                                        Lo valida el GATEWAY, no este servicio.
+                                        La cookie HttpOnly que deja `POST /api/users/public/auth/2fa/verify`
+                                        (o `/refresh`). Lo valida el GATEWAY, no este servicio.
+
+                                        NO va por header `Authorization`: el gateway rechaza con 401 un
+                                        token de persona que llegue por ahi (decision 3, spec "Sesion en
+                                        Cookies"). Como esta pantalla se abre bajo el mismo origen que la
+                                        API, el navegador manda la cookie solo despues de loguearte aca -
+                                        no hace falta pegar nada en "Authorize".
 
                                         Ojo con dos trampas conocidas al probar desde aca:
                                         esperar ~4 s despues del login (el gateway cachea el
