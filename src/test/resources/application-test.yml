@@ -60,10 +60,9 @@ users:
     twofactor-window: PT15M
   kafka:
     topics:
-      audit: tema-01-users.auditoria.v1
-      student-registered: tema-01-users.alumno-registrado.v1
-      notifications: tema-XX-notificaciones.email.v1
-      course-validation: tema-02-cursos.validacion-resuelta.v1
+      user-events: user-events
+      notification-events: notification-events
+      course-events: course-events
 
 logging:
   pattern:

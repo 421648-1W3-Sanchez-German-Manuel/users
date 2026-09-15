@@ -25,6 +25,7 @@ import java.time.Duration;
 import java.util.Base64;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.UUID;
 
 @Service
@@ -57,7 +58,13 @@ public class RegistrationService {
         this.urlFront = urlFront;
     }
 
-    public record PayloadAlumnoRegistrado(String userId, String legajo, String invitationCode) { }
+    public record StudentRegisteredPayload(String userId, String studentNumber, String invitationCode) {
+        public StudentRegisteredPayload {
+            Objects.requireNonNull(userId, "userId is required");
+            Objects.requireNonNull(studentNumber, "studentNumber is required");
+            Objects.requireNonNull(invitationCode, "invitationCode is required");
+        }
+    }
 
     @Transactional
     public void registrarAlumno(String firstNames, String lastNames, String legajo, String email,
@@ -128,7 +135,7 @@ public class RegistrationService {
         // la persona: si activara con un GET, el escaner consumiria el token de
         // toda la cohorte. La pantalla del frontend solo activa cuando alguien
         // aprieta el boton, y ningun escaner hace eso.
-        mails.enviar(EmailType.ACCOUNT_ACTIVATION, u.getEmail(),
+        mails.send(EmailType.ACCOUNT_ACTIVATION, u.getId(), u.getEmail(),
                 Map.of("firstNames", u.getFirstNames(),
                        "enlace", urlFront + "/activate?token=" + token));
     }
@@ -148,10 +155,16 @@ public class RegistrationService {
         if (u.getRole() == Role.STUDENT) {
             // DEC-34: publicamos al pasar a PENDING_COURSE, no antes. Si nunca
             // verifica el mail, Cursos nunca se entera de que existio el alta.
-            eventos.publicar(topics.alumnoRegistrado(), "ALUMNO_REGISTRADO",
-                    new PayloadAlumnoRegistrado(u.getId().toString(), u.getLegajo(),
+            eventos.publish(
+                    topics.userEvents(),
+                    u.getId().toString(),
+                    "STUDENT-REGISTERED",
+                    1,
+                    "user",
+                    u.getId(),
+                    new StudentRegisteredPayload(u.getId().toString(), u.getLegajo(),
                             leerCodigoInvitacion(u)));
-            mails.enviar(EmailType.REQUEST_PENDING, u.getEmail(),
+            mails.send(EmailType.REQUEST_PENDING, u.getId(), u.getEmail(),
                     Map.of("firstNames", u.getFirstNames(),
                            "accountStatus", AccountStatus.PENDING_COURSE.name()));
         }
@@ -191,7 +204,7 @@ public class RegistrationService {
      * El codigo de invitacion NO es dato nuestro: vive de forma efimera hasta
      * que la cuenta se activa, con el mismo TTL que el enlace (no el del OTP:
      * si el enlace vive 24 h y el codigo 30 min, una activacion tardia publica
-     * ALUMNO_REGISTRADO con invitationCode null y Cursos no puede rutear la
+     * STUDENT-REGISTERED with invitationCode null and Courses cannot route the
      * solicitud). Se guarda con EphemeralTokenService (la puerta hacia Redis
      * que users/ tiene permitida) y no con OtpService: ese motor es para
      * codigos de 6 digitos verificados por una persona, no para pasar un dato

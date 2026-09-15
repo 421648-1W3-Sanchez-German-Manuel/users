@@ -10,6 +10,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Primary;
 
 import java.util.Map;
+import java.util.UUID;
 
 /**
  * Decorates the real publisher to capture the reset link token. It never logs
@@ -30,11 +31,11 @@ public class TestResetSpy extends NotificationEventPublisher {
     }
 
     @Override
-    public void enviar(EmailType tipo, String to, Map<String, Object> vars) {
+    public void send(EmailType tipo, UUID userId, String to, Map<String, Object> vars) {
         if (tipo == EmailType.RESET_PASSWORD) {
             this.ultimoEnlace = (String) vars.get("enlace");
         }
-        super.enviar(tipo, to, vars);
+        super.send(tipo, userId, to, vars);
     }
 
     /** The token inside the captured link, or null if nothing was captured yet. */
