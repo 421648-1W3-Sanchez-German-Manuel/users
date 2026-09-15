@@ -86,19 +86,25 @@ public class UserController {
         return users.perfil(id);
     }
 
-    /** ADMIN directory. Only active accounts, newest first. */
-    @Operation(summary = "Directorio de usuarios (ADMIN)",
-               description = "Solo cuentas ACTIVAS, de la mas nueva a la mas vieja.")
+    /** ADMIN/GESTOR directory. Only active accounts, newest first. */
+    @Operation(summary = "Directorio de usuarios (ADMIN/GESTOR)",
+               description = """
+                       Solo cuentas ACTIVAS, de la mas nueva a la mas vieja.
+
+                       El ADMIN ve el directorio completo. El GESTOR ve solo cuentas
+                       PROFESSOR/GESTOR: nunca ADMIN ni STUDENT.""")
     @ApiResponse(responseCode = "200", description = "Listado de cuentas activas.")
     @GetMapping
-    @PreAuthorize("hasRole('ADMIN')")
-    public List<UserListItemResponse> listar() {
-        return users.listar();
+    @PreAuthorize("hasAnyRole('ADMIN', 'GESTOR')")
+    public List<UserListItemResponse> listar(@AuthenticationPrincipal GatewayPrincipal p) {
+        return users.listar(p.id());
     }
 
     /**
      * Layer 1 in the annotation (does it have the role?). Layer 2 in the service
-     * (does it leave the platform without an ADMIN?).
+     * (does it leave the platform without an ADMIN?). ADMIN-only: it creates
+     * only ADMIN accounts (see CreateUserRequest) — GESTOR accounts come in
+     * through the whitelist, like PROFESSOR.
      */
     @Operation(summary = "Crea un ADMIN (ADMIN)",
                description = """
@@ -117,7 +123,8 @@ public class UserController {
                 r.password()).toString());
     }
 
-    @Operation(summary = "Da de baja una cuenta (ADMIN)",
+    /** Layer 1 here, layer 2 (a GESTOR may only touch PROFESSOR/GESTOR) in the service. */
+    @Operation(summary = "Da de baja una cuenta (ADMIN/GESTOR)",
                description = """
                        Baja LOGICA: nada se borra de verdad (no-negociable 6).
 
@@ -127,27 +134,35 @@ public class UserController {
 
                        Dos capas de defensa distintas: la anotacion pregunta si tiene el rol, y
                        el servicio pregunta si la operacion deja la plataforma sin ningun ADMIN
-                       activo. Un ADMIN tampoco puede darse de baja a si mismo.""")
+                       activo, o si es un GESTOR intentando dar de baja a alguien fuera de su
+                       alcance PROFESSOR/GESTOR (ni ADMIN ni STUDENT). Un ADMIN tampoco puede
+                       darse de baja a si mismo.""")
     @ApiResponse(responseCode = "200", description = "Cuenta dada de baja.")
     @ApiResponse(responseCode = "401", description = "`type`: `invalid-credentials`. La reautenticacion fallo.")
+    @ApiResponse(responseCode = "403", description = "`type`: `access-denied`. Un GESTOR intento salir de su alcance PROFESSOR/GESTOR.")
     @ApiResponse(responseCode = "409", description = """
             `type`: `last-admin`. La plataforma no puede quedarse sin ADMIN activo.""")
     @DeleteMapping("/{id}")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'GESTOR')")
     public void baja(@AuthenticationPrincipal GatewayPrincipal p, @PathVariable UUID id,
                      @Valid @RequestBody AdminDeactivationRequest req) {
         users.deactivate(p.id(), id, req);
     }
 
-    @Operation(summary = "Cambia el rol de una cuenta (ADMIN)",
+    @Operation(summary = "Cambia el rol de una cuenta (ADMIN/GESTOR)",
                description = """
                        Misma defensa de dos capas que la baja: bajarle el rol al ultimo ADMIN
                        activo deja la plataforma sin nadie que administre, asi que el servicio
-                       lo corta aunque quien lo pida sea ADMIN.""")
+                       lo corta aunque quien lo pida sea ADMIN.
+
+                       Un GESTOR solo puede mover cuentas PROFESSOR/GESTOR entre esos dos roles:
+                       no puede tocar una cuenta ADMIN ni otorgar ADMIN, y tampoco puede tocar ni
+                       crear cuentas STUDENT por esta via.""")
     @ApiResponse(responseCode = "200", description = "Rol cambiado.")
+    @ApiResponse(responseCode = "403", description = "`type`: `access-denied`. Un GESTOR intento salir de su alcance PROFESSOR/GESTOR.")
     @ApiResponse(responseCode = "409", description = "`type`: `last-admin`.")
     @PatchMapping("/{id}/role")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'GESTOR')")
     public void changeRole(@AuthenticationPrincipal GatewayPrincipal p, @PathVariable UUID id,
                            @Valid @RequestBody RoleChangeRequest req) {
         users.changeRole(p.id(), id, req.role());

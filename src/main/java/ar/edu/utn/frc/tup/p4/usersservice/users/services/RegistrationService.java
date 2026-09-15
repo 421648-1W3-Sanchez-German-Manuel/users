@@ -82,11 +82,24 @@ public class RegistrationService {
     public void registrarProfesor(String firstNames, String lastNames, String email,
                                   String password, String termsVersion) {
         String normalizado = email.toLowerCase(Locale.ROOT);
-        if (!whitelist.existsByEmailAndDeletedAtIsNull(normalizado)) {
+        if (!whitelist.existsByEmailAndRoleAndDeletedAtIsNull(normalizado, Role.PROFESSOR)) {
             throw ApiException.emailNotWhitelisted(
-                    "El email no esta en la lista blanca. Pedile a un ADMIN que lo agregue.");
+                    "El email no esta en la lista blanca. Pedile a un ADMIN o GESTOR que lo agregue.");
         }
         User u = crear(firstNames, lastNames, email, password, Role.PROFESSOR, termsVersion);
+        repo.saveAndFlush(u);
+        enviarEnlaceActivacion(u);
+    }
+
+    @Transactional
+    public void registrarGestor(String firstNames, String lastNames, String email,
+                                String password, String termsVersion) {
+        String normalizado = email.toLowerCase(Locale.ROOT);
+        if (!whitelist.existsByEmailAndRoleAndDeletedAtIsNull(normalizado, Role.GESTOR)) {
+            throw ApiException.emailNotWhitelisted(
+                    "El email no esta en la lista blanca. Pedile a un ADMIN o GESTOR que lo agregue.");
+        }
+        User u = crear(firstNames, lastNames, email, password, Role.GESTOR, termsVersion);
         repo.saveAndFlush(u);
         enviarEnlaceActivacion(u);
     }

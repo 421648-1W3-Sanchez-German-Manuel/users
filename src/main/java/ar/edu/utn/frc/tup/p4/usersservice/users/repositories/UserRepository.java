@@ -21,6 +21,9 @@ public interface UserRepository extends JpaRepository<User, UUID> {
     /** Active accounts, newest first. Named query: avoids spring-data's count-then-paged method detection. */
     List<User> findByDeletedAtIsNullOrderByCreatedAtDesc();
 
+    /** Active accounts restricted to the given roles, newest first. Used to scope the GESTOR directory. */
+    List<User> findByRoleInAndDeletedAtIsNullOrderByCreatedAtDesc(List<Role> roles);
+
     long countByRoleAndDeletedAtIsNull(Role role);
 
     /**
