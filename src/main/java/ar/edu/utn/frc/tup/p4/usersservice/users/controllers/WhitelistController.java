@@ -29,10 +29,13 @@ public class WhitelistController {
 
     public WhitelistController(WhitelistService whitelist) { this.whitelist = whitelist; }
 
-    @Operation(summary = "Habilita un email (ADMIN)",
+    @Operation(summary = "Habilita un email (ADMIN/GESTOR)",
                description = """
                        Alta directa, sin pasar por la cola de solicitudes. A partir de aca ese
-                       email puede auto-registrarse como profesor.""")
+                       email puede auto-registrarse como PROFESSOR o GESTOR, segun `role`.
+
+                       `role` es OPCIONAL y por defecto es `PROFESSOR`; solo admite `PROFESSOR`
+                       o `GESTOR` (la whitelist nunca otorga `ADMIN`).""")
     @ApiResponse(responseCode = "200", description = "Habilitado. Devuelve el `id`.")
     @ApiResponse(responseCode = "409", description = "`type`: `duplicate-email`. Ya estaba habilitado.")
     @PostMapping
@@ -42,8 +45,8 @@ public class WhitelistController {
         return Map.of("id", whitelist.agregar(p.id(), r.email(), r.role()).toString());
     }
 
-    @Operation(summary = "Lista los emails habilitados (ADMIN)")
-    @ApiResponse(responseCode = "200", description = "Cada fila trae `id`, `email` y `createdAt`.")
+    @Operation(summary = "Lista los emails habilitados (ADMIN/GESTOR)")
+    @ApiResponse(responseCode = "200", description = "Cada fila trae `id`, `email`, `role` y `createdAt`.")
     @GetMapping
     @PreAuthorize("hasAnyRole('ADMIN', 'GESTOR')")
     public List<Map<String, String>> listar() {
@@ -58,7 +61,7 @@ public class WhitelistController {
                 }).toList();
     }
 
-    @Operation(summary = "Quita un email de la whitelist (ADMIN)",
+    @Operation(summary = "Quita un email de la whitelist (ADMIN/GESTOR)",
                description = """
                        No afecta a las cuentas YA creadas con ese email: saca la habilitacion
                        para registrarse, no da de baja a nadie.""")
@@ -110,14 +113,15 @@ public class WhitelistController {
         return dto;
     }
 
-    @Operation(summary = "Aprueba o rechaza una solicitud (ADMIN)",
+    @Operation(summary = "Aprueba o rechaza una solicitud (ADMIN/GESTOR)",
                description = """
-                       Aprobarla habilita el email. `rejectionReason` es obligatorio cuando
-                       `approve` es `false`: un rechazo sin motivo no le sirve a nadie.""")
+                       Aprobarla habilita el email como PROFESSOR. `rejectionReason` es
+                       obligatorio cuando `approve` es `false`: un rechazo sin motivo no le
+                       sirve a nadie.""")
     @ApiResponse(responseCode = "200", description = "Solicitud resuelta.")
     @ApiResponse(responseCode = "400", description = """
-            `type`: `validation`. Rechazo sin `rejectionReason`, o una solicitud que ya
-            estaba resuelta.""")
+            `type`: `validation`. Rechazo sin `rejectionReason`, una solicitud que ya estaba
+            resuelta, o el email ya esta habilitado en la whitelist con otro rol.""")
     @PatchMapping("/requests/{id}")
     @PreAuthorize("hasAnyRole('ADMIN', 'GESTOR')")
     public void resolver(@AuthenticationPrincipal GatewayPrincipal p, @PathVariable UUID id,

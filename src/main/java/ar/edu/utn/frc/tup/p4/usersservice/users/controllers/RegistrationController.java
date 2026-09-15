@@ -41,9 +41,9 @@ public class RegistrationController {
 
     @Operation(summary = "Auto-registro de un profesor",
                description = """
-                       El email tiene que estar en la whitelist, que administra un ADMIN. Un
-                       profesor no entra por invitacion como el alumno: entra porque alguien
-                       lo habilito antes.
+                       El email tiene que estar en la whitelist, que administra un ADMIN o un
+                       GESTOR. Un profesor no entra por invitacion como el alumno: entra porque
+                       alguien lo habilito antes.
 
                        `termsVersion` tiene que ser la version vigente que devuelve
                        `/legal/terms`.""")
@@ -55,6 +55,17 @@ public class RegistrationController {
         registro.registrarProfesor(r.firstNames(), r.lastNames(), r.email(), r.password(), r.termsVersion());
     }
 
+    @Operation(summary = "Auto-registro de un gestor",
+               description = """
+                       El email tiene que estar en la whitelist como GESTOR, que administra un
+                       ADMIN o un GESTOR. Igual que el profesor, no entra por invitacion: entra
+                       porque alguien lo habilito antes.
+
+                       `termsVersion` tiene que ser la version vigente que devuelve
+                       `/legal/terms`.""")
+    @ApiResponse(responseCode = "200", description = "Alta aceptada. El enlace de activacion viaja por email.")
+    @ApiResponse(responseCode = "403", description = "`type`: `email-not-whitelisted`.")
+    @ApiResponse(responseCode = "409", description = "`type`: `duplicate-email`.")
     @PostMapping("/gestor")
     public void gestor(@Valid @RequestBody GestorRegistrationRequest r) {
         registro.registrarGestor(r.firstNames(), r.lastNames(), r.email(), r.password(), r.termsVersion());

@@ -123,7 +123,7 @@ public class UserController {
                 r.password()).toString());
     }
 
-    /** Layer 1 here, layer 2 (a GESTOR may never touch an ADMIN) in the service. */
+    /** Layer 1 here, layer 2 (a GESTOR may only touch PROFESSOR/GESTOR) in the service. */
     @Operation(summary = "Da de baja una cuenta (ADMIN/GESTOR)",
                description = """
                        Baja LOGICA: nada se borra de verdad (no-negociable 6).
@@ -134,10 +134,12 @@ public class UserController {
 
                        Dos capas de defensa distintas: la anotacion pregunta si tiene el rol, y
                        el servicio pregunta si la operacion deja la plataforma sin ningun ADMIN
-                       activo, o si es un GESTOR intentando dar de baja a un ADMIN. Un ADMIN
-                       tampoco puede darse de baja a si mismo.""")
+                       activo, o si es un GESTOR intentando dar de baja a alguien fuera de su
+                       alcance PROFESSOR/GESTOR (ni ADMIN ni STUDENT). Un ADMIN tampoco puede
+                       darse de baja a si mismo.""")
     @ApiResponse(responseCode = "200", description = "Cuenta dada de baja.")
     @ApiResponse(responseCode = "401", description = "`type`: `invalid-credentials`. La reautenticacion fallo.")
+    @ApiResponse(responseCode = "403", description = "`type`: `access-denied`. Un GESTOR intento salir de su alcance PROFESSOR/GESTOR.")
     @ApiResponse(responseCode = "409", description = """
             `type`: `last-admin`. La plataforma no puede quedarse sin ADMIN activo.""")
     @DeleteMapping("/{id}")
@@ -147,12 +149,17 @@ public class UserController {
         users.deactivate(p.id(), id, req);
     }
 
-    @Operation(summary = "Cambia el rol de una cuenta (ADMIN)",
+    @Operation(summary = "Cambia el rol de una cuenta (ADMIN/GESTOR)",
                description = """
                        Misma defensa de dos capas que la baja: bajarle el rol al ultimo ADMIN
                        activo deja la plataforma sin nadie que administre, asi que el servicio
-                       lo corta aunque quien lo pida sea ADMIN.""")
+                       lo corta aunque quien lo pida sea ADMIN.
+
+                       Un GESTOR solo puede mover cuentas PROFESSOR/GESTOR entre esos dos roles:
+                       no puede tocar una cuenta ADMIN ni otorgar ADMIN, y tampoco puede tocar ni
+                       crear cuentas STUDENT por esta via.""")
     @ApiResponse(responseCode = "200", description = "Rol cambiado.")
+    @ApiResponse(responseCode = "403", description = "`type`: `access-denied`. Un GESTOR intento salir de su alcance PROFESSOR/GESTOR.")
     @ApiResponse(responseCode = "409", description = "`type`: `last-admin`.")
     @PatchMapping("/{id}/role")
     @PreAuthorize("hasAnyRole('ADMIN', 'GESTOR')")
