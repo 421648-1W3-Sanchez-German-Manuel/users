@@ -404,11 +404,17 @@ El primero es grave por una razón específica de este dominio: **`RF-USR-05e` d
 
 **Outbox:** el evento se **inserta en una tabla** en la misma transacción que el cambio de estado, y un poller lo publica después.
 
-- Tabla `outbox_events`: `event_id` (PK), `topic`, `payload` (JSON), `created_at`, `published_at` nullable, `intentos`.
-- `@Scheduled` cada 2 s: toma los que tienen `published_at IS NULL` con `LIMIT` + `FOR UPDATE SKIP LOCKED` (funciona en MySQL 8), publica, marca.
+- Tabla `outbox_events`: identifiers, aggregate metadata, destination topic,
+  Message Key, complete JSON envelope, status, attempts, and timestamps.
+- `@Scheduled` cada 3 s: toma los que tienen `status = PENDING` con `LIMIT` +
+  `FOR UPDATE SKIP LOCKED` (funciona en MySQL 8), publica y marca. Después de
+  cinco fallos, el estado pasa a `FAILED`.
 - Si Kafka está caído, los eventos se acumulan y salen solos cuando vuelve. **Cero pérdida.**
 
-**El costo honesto:** una tabla, una migración, ~60 líneas de poller, y los eventos pasan de instantáneos a "≤2 s". Vale la pena porque es el espejo exacto de `processed_events`: ya resolvimos la idempotencia del **consumidor** y el lado del **productor** había quedado sin red.
+**El costo honesto:** una tabla, una migración y un poller; los eventos pasan de
+instantáneos a "≤3 s". Vale la pena porque es el espejo exacto de
+`processed_events`: ya resolvimos la idempotencia del **consumidor** y el lado
+del **productor** había quedado sin red.
 
 > `SELECT … FOR UPDATE SKIP LOCKED` es lo que permite más de una instancia sin publicar duplicados. Sin `SKIP LOCKED`, dos pollers se bloquean entre sí.
 
@@ -598,11 +604,16 @@ El listener escribe la fila **en la misma transacción** que el cambio de estado
 
 El espejo de `processed_events`: aquélla da idempotencia al **consumidor**, ésta da entrega garantizada al **productor**.
 
-Campos: `event_id VARCHAR(64)` (PK, el mismo `eventId` del sobre), `topic VARCHAR(255)`, `payload JSON`, `created_at DATETIME(6)`, `published_at DATETIME(6)` **nullable**, `intentos INT`.
+Campos: `outbox_id` (PK), `event_id` (UUID único, el mismo `eventId` del
+sobre), `event_type`, `aggregate_type`, `aggregate_id`, `destination_topic`,
+`message_key`, `payload JSON`, `status`, `attempts`, `created_at` y
+`published_at` nullable.
 
 - El evento se inserta **en la misma transacción** que el cambio de estado que lo origina. Si la transacción hace rollback, el evento no existe: no se puede anunciar algo que no pasó.
-- `OutboxPoller` (`@Scheduled`, cada 2 s) toma un lote con `published_at IS NULL`, lo publica y lo marca.
-- Índice sobre `(published_at, created_at)` para que el poller no escanee la tabla entera.
+- `OutboxPoller` (`@Scheduled`, cada 3 s) toma un lote con `status = PENDING`,
+  lo publica y lo marca `PUBLISHED`.
+- Un fallo incrementa `attempts`; al quinto intento fallido pasa a `FAILED`.
+- Índice sobre `(status, created_at)` para que el poller no escanee la tabla entera.
 
 > 🔴 **El `SELECT` del poller lleva `FOR UPDATE SKIP LOCKED`.** Es lo que permite más de una instancia sin publicar duplicados: cada poller toma filas distintas en vez de bloquearse contra el otro. MySQL 8 lo soporta.
 
@@ -1128,6 +1139,11 @@ Un pico de logins simultáneos (`RF-NFR-03`: 120 alumnos entrando a la vez) gene
 
 ## 13. Kafka · sobre estándar, publicaciones y consumer
 
+> **Current contract source:** [`KAFKA-EVENT-CONTRACTS.md`](KAFKA-EVENT-CONTRACTS.md).
+> It supersedes the historical topic names and event examples in this section.
+> Topics are now domain-oriented, event types use uppercase words separated by
+> hyphens, and every envelope includes `eventVersion`.
+
 ### 13.1 El sobre estándar — **DEC-12**
 
 **Todos** los eventos que se publican al bus siguen este contrato común, fijado a nivel plataforma:
@@ -1135,7 +1151,8 @@ Un pico de logins simultáneos (`RF-NFR-03`: 120 alumnos entrando a la vez) gene
 ```jsonc
 {
   "eventId":   "123e4567-e89b-12d3-a456-426614174000",  // UUID · trazabilidad e idempotencia
-  "eventType": "NOMBRE_DEL_EVENTO",                     // ej. USUARIO_REGISTRADO
+  "eventType": "EVENT-NAME",
+  "eventVersion": 1,
   "timestamp": "2026-09-02T19:30:00Z",                  // ISO 8601, UTC
   "producer":  "tema-01-users",                         // DEC-12
   "payload":   { }                                      // específico de cada evento
@@ -1150,6 +1167,7 @@ El contrato común garantiza **consistencia en la envoltura** (`eventId`, `event
 public record EventEnvelope<T>(
         UUID eventId,          // generado al publicar
         String eventType,
+        int eventVersion,
         Instant timestamp,     // Instant.now() al publicar
         String producer,       // siempre "tema-01-users"
         T payload) {}
@@ -2034,7 +2052,7 @@ Del manifiesto §12.2, más lo que agregan las decisiones de §18.0.
 | 30 | **(DEC-42)** Al 6º **fallo** de login sobre el mismo email dentro de la ventana, la respuesta es `429` con `Retry-After`; un login **exitoso** no consume presupuesto | `RateLimitLoginIT` con Testcontainers Redis |
 | 31 | **(DEC-44)** `TokenContractTest`: **todo** token de persona lleva `iss`, `sub`, `roles`, `type`, `jti`, `sid`, `est`, `pwd`, `onb`, `iat`, `exp`; todo token de servicio lleva `iss`, `sub`, `roles`, `type`, `aud`, `scope`, `jti`, `iat`, `exp`. Si falta uno, falla nombrando el claim | es lo que reemplaza al flag de despliegue del Gateway |
 | 32 | **(DEC-45a)** No existe forma de construir un `TokenClaims` sin los claims obligatorios | revisión de la firma del builder + `TokenContractTest` como segunda línea |
-| 33 | **(DEC-45b)** Con **Kafka detenido**, un alta de alumno **igual completa** y el evento queda en `outbox_events` con `published_at IS NULL`; al levantar Kafka, el poller lo publica **sin intervención** | `OutboxIT` con Testcontainers — parar el contenedor de Kafka, hacer el alta, levantarlo, esperar |
+| 33 | **(DEC-45b)** Con **Kafka detenido**, un alta de alumno **igual completa** y el evento queda en `outbox_events` con `status = PENDING`; al levantar Kafka, el poller lo publica **sin intervención** | `OutboxIT` con Testcontainers — parar el contenedor de Kafka, hacer el alta, levantarlo, esperar |
 | 34 | **(DEC-45c)** Un test parametrizado recorre **todo** el enum `EmailType` y verifica que cada plantilla existe y renderiza sin variables sin resolver | `EmailTypeTest` — hoy esto no se puede escribir sin listar los seis a mano |
 | 35 | **(DEC-45d)** Toda transición fuera de la tabla de §9.2 lanza `InvalidTransitionException`; en particular **`DEACTIVATED` no transiciona a nada** | `TransitionsTest` parametrizado sobre el producto cartesiano de estados |
 

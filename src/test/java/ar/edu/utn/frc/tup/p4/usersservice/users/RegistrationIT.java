@@ -22,7 +22,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 /**
  * DoD #2: alta de alumno con codigo de invitacion en el mismo form, la cuenta
  * pasa PENDING_EMAIL -> PENDING_COURSE al activar el mail, y se publica
- * ALUMNO_REGISTRADO recien ahi (DEC-34). DoD #17 (mitad de alta): sin
+ * STUDENT-REGISTERED recien ahi (DEC-34). DoD #17 (mitad de alta): sin
  * tycAceptado, 400 (DEC-11) — la otra mitad (baja de ADMIN) es de AdminRulesIT.
  */
 @Import(TestActivationSpy.Config.class)
@@ -45,11 +45,11 @@ class RegistrationIT extends AbstractIntegrationTest {
      * escribio Jackson al publicar. Comparar por substring literal es fragil;
      * parseamos el envelope de verdad.
      */
-    private boolean outboxTieneAlumnoRegistrado(String userId) {
+    private boolean outboxHasStudentRegistered(String userId) {
         return outbox.findAll().stream().anyMatch(e -> {
             try {
                 var nodo = mapper.readTree(e.getPayload());
-                return "ALUMNO_REGISTRADO".equals(nodo.path("eventType").asText())
+                return "STUDENT-REGISTERED".equals(nodo.path("eventType").asText())
                         && userId.equals(nodo.path("payload").path("userId").asText());
             } catch (Exception ex) {
                 throw new IllegalStateException(ex);
@@ -69,7 +69,7 @@ class RegistrationIT extends AbstractIntegrationTest {
 
         // DEC-34: el mail de activacion ya se encolo, pero el evento de negocio
         // (identificado por el userId de ESTA cuenta) todavia no existe.
-        assertThat(outboxTieneAlumnoRegistrado(userId)).isFalse();
+        assertThat(outboxHasStudentRegistered(userId)).isFalse();
     }
 
     @Test
@@ -83,8 +83,8 @@ class RegistrationIT extends AbstractIntegrationTest {
 
         assertThat(repo.findByEmailAndDeletedAtIsNull(email)).get()
                 .extracting(u -> u.getAccountStatus()).isEqualTo(AccountStatus.PENDING_COURSE);
-        assertThat(outboxTieneAlumnoRegistrado(userId))
-                .as("el ALUMNO_REGISTRADO tiene que existir despues de activar, con el userId de esta cuenta")
+        assertThat(outboxHasStudentRegistered(userId))
+                .as("STUDENT-REGISTERED must exist after activation with this account userId")
                 .isTrue();
     }
 

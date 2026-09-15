@@ -56,7 +56,10 @@ public class WhitelistService {
 
         usuarios.findAll().stream()
                 .filter(u -> u.getRole() == Role.ADMIN && u.getDeletedAt() == null)
-                .forEach(a -> mails.enviar(EmailType.WHITELIST_SUBMISSION, a.getEmail(),
+                .forEach(a -> mails.send(
+                        EmailType.WHITELIST_SUBMISSION,
+                        a.getId(),
+                        a.getEmail(),
                         Map.of("emailSolicitado", r.getRequestedEmail(), "reason", reason)));
         return r.getId();
     }
@@ -81,7 +84,7 @@ public class WhitelistService {
         solicitudes.save(r);
 
         usuarios.findByIdAndDeletedAtIsNull(r.getRequestedBy()).ifPresent(prof ->
-                mails.enviar(EmailType.WHITELIST_DECISION, prof.getEmail(), Map.of(
+                mails.send(EmailType.WHITELIST_DECISION, prof.getId(), prof.getEmail(), Map.of(
                         "firstNames", prof.getFirstNames(),
                         "emailSolicitado", r.getRequestedEmail(),
                         "resultado", approve ? RequestStatus.APPROVED.name()

@@ -10,6 +10,7 @@ import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Map;
+import java.util.UUID;
 
 /**
  * Captura el token del enlace de activacion.
@@ -32,8 +33,8 @@ public class TestActivationSpy extends NotificationEventPublisher {
 
     @Override
     @Transactional(propagation = Propagation.MANDATORY)
-    public void enviar(EmailType tipo, String to, Map<String, Object> vars) {
-        real.enviar(tipo, to, vars);
+    public void send(EmailType tipo, UUID userId, String to, Map<String, Object> vars) {
+        real.send(tipo, userId, to, vars);
         if (tipo == EmailType.ACCOUNT_ACTIVATION) {
             this.ultimoTokenActivacion = tokenDe(vars);
         }
