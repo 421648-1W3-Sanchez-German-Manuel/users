@@ -7,8 +7,10 @@ import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.UUID;
+
 /**
- * DEC-45b - writes events to the outbox instead of publishing directly to Kafka.
+ * Writes standard Kafka events to the transactional outbox.
  */
 @Component
 public class AccountEventPublisher {
@@ -22,15 +24,27 @@ public class AccountEventPublisher {
     }
 
     @Transactional(propagation = Propagation.MANDATORY)
-    public void publicar(String topic, String eventType, Object payload) {
-        EventEnvelope<Object> envelope = EventEnvelope.de(eventType, payload);
+    public void publish(
+            String topic,
+            String messageKey,
+            String eventType,
+            int eventVersion,
+            String aggregateType,
+            UUID aggregateId,
+            Object payload) {
+        EventEnvelope<Object> envelope =
+                EventEnvelope.create(eventType, eventVersion, payload);
         try {
             outbox.save(OutboxEvent.pending(
                     envelope.eventId(),
+                    envelope.eventType(),
+                    aggregateType,
+                    aggregateId,
                     topic,
+                    messageKey,
                     mapper.writeValueAsString(envelope)));
         } catch (JsonProcessingException exception) {
-            throw new IllegalStateException("No se pudo serializar el evento " + eventType, exception);
+            throw new IllegalStateException("Could not serialize event " + eventType, exception);
         }
     }
 }

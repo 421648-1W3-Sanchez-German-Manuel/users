@@ -90,7 +90,7 @@ public class PasswordService {
 
             efimeros.guardar(claveReset(hash), datos.userId().toString(), TTL_RESET);
             efimeros.guardar(claveIndice(datos.email()), hash, TTL_RESET);
-            mails.enviar(EmailType.RESET_PASSWORD, datos.email(), Map.of(
+            mails.send(EmailType.RESET_PASSWORD, datos.userId(), datos.email(), Map.of(
                     "firstNames", datos.firstNames(),
                     "enlace", urlFront + "/reset?token=" + token));
         }

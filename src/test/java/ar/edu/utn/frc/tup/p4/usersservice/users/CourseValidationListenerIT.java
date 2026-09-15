@@ -28,9 +28,9 @@ class CourseValidationListenerIT extends AbstractIntegrationTest {
 
     private String sobre(String eventId, UUID userId, String resultado) {
         return """
-               {"eventId":"%s","eventType":"VALIDACION_CURSO_RESUELTA",
+               {"eventId":"%s","eventType":"COURSE-VALIDATION-RESOLVED","eventVersion":1,
                 "timestamp":"2026-09-07T12:00:00Z","producer":"tema-02-cursos",
-                "payload":{"userId":"%s","resultado":"%s","cursoId":"c-1"}}
+                "payload":{"userId":"%s","result":"%s","courseId":"c-1"}}
                """.formatted(eventId, userId, resultado);
     }
 
@@ -75,10 +75,10 @@ class CourseValidationListenerIT extends AbstractIntegrationTest {
         // DEC-34: if Cursos sends three extra fields, we do not break.
         User u = pendienteCurso("cv4@utn.edu.ar");
         String conExtras = """
-              {"eventId":"%s","eventType":"VALIDACION_CURSO_RESUELTA",
+              {"eventId":"%s","eventType":"COURSE-VALIDATION-RESOLVED","eventVersion":1,
                "timestamp":"2026-09-07T12:00:00Z","producer":"tema-02-cursos",
                "campoNuevoDeCursos":"loquesea",
-               "payload":{"userId":"%s","resultado":"VALIDADO_PADRON","cursoId":"c-1",
+               "payload":{"userId":"%s","result":"VALIDADO_PADRON","courseId":"c-1",
                           "otroCampoNuevo":42}}
               """.formatted(UUID.randomUUID(), u.getId());
 
@@ -97,5 +97,39 @@ class CourseValidationListenerIT extends AbstractIntegrationTest {
 
         assertThat(repo.findById(u.getId()).orElseThrow().toString())
                 .doesNotContain("VALIDADO_EXCEPCION").doesNotContain("c-1");
+    }
+
+    @Test
+    void anUnknownEventTypeIsIgnoredSafely() {
+        User user = pendienteCurso("cv6@utn.edu.ar");
+        long processedBefore = procesados.count();
+        String unknownEvent = """
+                {"eventId":"%s","eventType":"COURSE-ARCHIVED","eventVersion":1,
+                 "timestamp":"2026-09-07T12:00:00Z","producer":"tema-02-cursos",
+                 "payload":{"userId":"%s","result":"ARCHIVED","courseId":"c-1"}}
+                """.formatted(UUID.randomUUID(), user.getId());
+
+        listener.consumir(unknownEvent);
+
+        assertThat(repo.findById(user.getId()))
+                .get().extracting(User::getAccountStatus).isEqualTo(AccountStatus.PENDING_COURSE);
+        assertThat(procesados.count()).isEqualTo(processedBefore);
+    }
+
+    @Test
+    void anUnknownEventVersionIsIgnoredSafely() {
+        User user = pendienteCurso("cv7@utn.edu.ar");
+        long processedBefore = procesados.count();
+        String unknownVersion = """
+                {"eventId":"%s","eventType":"COURSE-VALIDATION-RESOLVED","eventVersion":2,
+                 "timestamp":"2026-09-07T12:00:00Z","producer":"tema-02-cursos",
+                 "payload":{"userId":"%s","result":"VALIDATED","courseId":"c-1"}}
+                """.formatted(UUID.randomUUID(), user.getId());
+
+        listener.consumir(unknownVersion);
+
+        assertThat(repo.findById(user.getId()))
+                .get().extracting(User::getAccountStatus).isEqualTo(AccountStatus.PENDING_COURSE);
+        assertThat(procesados.count()).isEqualTo(processedBefore);
     }
 }
