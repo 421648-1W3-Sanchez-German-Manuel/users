@@ -44,6 +44,9 @@ server:
 management:
   server:
     port: ${MANAGEMENT_PORT:8083}   # DEC-28
+  tracing:
+    sampling:
+      probability: 1.0
   endpoints:
     web:
       exposure:
@@ -187,4 +190,4 @@ springdoc:
 
 logging:
   pattern:
-    level: "%5p [${spring.application.name},%X{traceId:-},%X{requestId:-}]"
+    level: "%5p [${spring.application.name},%X{traceId:-},%X{spanId:-},%X{requestId:-}]"
