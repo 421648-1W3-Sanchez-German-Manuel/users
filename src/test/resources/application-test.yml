@@ -63,6 +63,14 @@ users:
       user-events: user-events
       notification-events: notification-events
       course-events: course-events
+    course-validation:
+      event-type: COURSE-VALIDATION-RESOLVED
+      event-version: 1
+      producer: tema-02-cursos
+      payload:
+        user-id: userId
+        result: result
+        course-id: courseId
 
 logging:
   pattern:

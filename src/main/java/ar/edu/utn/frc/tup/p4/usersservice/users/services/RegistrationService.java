@@ -215,6 +215,7 @@ public class RegistrationService {
     }
 
     private String leerCodigoInvitacion(User u) {
-        return efimeros.consumir(claveInvitacion(u.getEmail())).orElse(null);
+        return efimeros.consumir(claveInvitacion(u.getEmail()))
+                .orElseThrow(ApiException::invalidLink);
     }
 }

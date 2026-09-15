@@ -1,5 +1,6 @@
 package ar.edu.utn.frc.tup.p4.usersservice.users.listeners;
 
+import ar.edu.utn.frc.tup.p4.usersservice.config.CourseValidationContractProperties;
 import ar.edu.utn.frc.tup.p4.usersservice.shared.events.ProcessedEventRepository;
 import ar.edu.utn.frc.tup.p4.usersservice.shared.events.EventEnvelope;
 import ar.edu.utn.frc.tup.p4.usersservice.shared.events.entities.ProcessedEvent;
@@ -23,20 +24,20 @@ import java.util.UUID;
 public class CourseValidationListener {
 
     private static final Logger log = LoggerFactory.getLogger(CourseValidationListener.class);
-    private static final String SUPPORTED_EVENT_TYPE = "COURSE-VALIDATION-RESOLVED";
-    private static final int SUPPORTED_EVENT_VERSION = 1;
-    private static final String EXPECTED_PRODUCER = "tema-02-cursos";
 
     private final ObjectMapper mapper;
     private final UserRepository repo;
     private final ProcessedEventRepository procesados;
     private final NotificationEventPublisher mails;
+    private final CourseValidationContractProperties contract;
 
     public CourseValidationListener(ObjectMapper mapper, UserRepository repo,
                                    ProcessedEventRepository procesados,
-                                   NotificationEventPublisher mails) {
+                                   NotificationEventPublisher mails,
+                                   CourseValidationContractProperties contract) {
         this.mapper = mapper; this.repo = repo;
         this.procesados = procesados; this.mails = mails;
+        this.contract = contract;
     }
 
     @KafkaListener(topics = "${users.kafka.topics.course-events}")
@@ -53,14 +54,14 @@ public class CourseValidationListener {
             return;
         }
 
-        if (!SUPPORTED_EVENT_TYPE.equals(envelope.eventType())) {
+        if (!contract.eventType().equals(envelope.eventType())) {
             log.info(
                     "KAFKA_EVENT_UNKNOWN eventId={} eventType={}",
                     envelope.eventId(),
                     envelope.eventType());
             return;
         }
-        if (envelope.eventVersion() != SUPPORTED_EVENT_VERSION) {
+        if (envelope.eventVersion() != contract.eventVersion()) {
             log.warn(
                     "KAFKA_EVENT_VERSION_UNSUPPORTED eventId={} eventType={} eventVersion={}",
                     envelope.eventId(),
@@ -68,7 +69,7 @@ public class CourseValidationListener {
                     envelope.eventVersion());
             return;
         }
-        if (!EXPECTED_PRODUCER.equals(envelope.producer())) {
+        if (!contract.producer().equals(envelope.producer())) {
             log.error(
                     "KAFKA_EVENT_PRODUCER_INVALID eventId={} eventType={} producer={}",
                     envelope.eventId(),
@@ -77,11 +78,12 @@ public class CourseValidationListener {
             return;
         }
 
+        var fields = contract.payload();
         JsonNode payload = envelope.payload();
         if (!payload.isObject()
-                || !payload.path("userId").isTextual()
-                || !payload.path("result").isTextual()
-                || !payload.path("courseId").isTextual()) {
+                || !payload.path(fields.userId()).isTextual()
+                || !payload.path(fields.result()).isTextual()
+                || !payload.path(fields.courseId()).isTextual()) {
             log.error(
                     "KAFKA_EVENT_PAYLOAD_INVALID eventId={} eventType={} eventVersion={}",
                     envelope.eventId(),
@@ -92,11 +94,12 @@ public class CourseValidationListener {
 
         UUID userId;
         try {
-            userId = UUID.fromString(payload.path("userId").textValue());
+            userId = UUID.fromString(payload.path(fields.userId()).textValue());
         } catch (IllegalArgumentException exception) {
             log.error(
-                    "KAFKA_EVENT_PAYLOAD_INVALID eventId={} field=userId",
-                    envelope.eventId());
+                    "KAFKA_EVENT_PAYLOAD_INVALID eventId={} field={}",
+                    envelope.eventId(),
+                    fields.userId());
             return;
         }
 
@@ -111,7 +114,7 @@ public class CourseValidationListener {
             return;
         }
 
-        // DEC-09: `result` and `courseId` are used and then discarded.
+        // DEC-09: result and courseId are used and then discarded.
         // Cursos owns that data; duplicating it would be a second source of
         // truth for the same fact.
         repo.findByIdAndDeletedAtIsNull(userId).ifPresent(u -> {
