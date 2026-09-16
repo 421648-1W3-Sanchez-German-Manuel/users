@@ -124,12 +124,16 @@ class OpenApiIT extends AbstractIntegrationTest {
     }
 
     @Test
-    void el_spec_declara_el_esquema_bearer() throws Exception {
+    void el_spec_declara_el_esquema_de_cookie() throws Exception {
+        // No es Bearer por header: el gateway (decision 3, spec "Sesion en
+        // Cookies") rechaza un token de persona que llegue por Authorization.
         JsonNode esquema = JSON.readTree(get(SPEC).body())
-                .at("/components/securitySchemes/bearerAuth");
+                .at("/components/securitySchemes/cookieAuth");
 
         assertThat(esquema.isMissingNode()).isFalse();
-        assertThat(esquema.get("scheme").asText()).isEqualTo("bearer");
+        assertThat(esquema.get("type").asText()).isEqualTo("apiKey");
+        assertThat(esquema.get("in").asText()).isEqualTo("cookie");
+        assertThat(esquema.get("name").asText()).isEqualTo("fu_at");
     }
 
 

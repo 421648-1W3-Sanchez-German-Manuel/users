@@ -1,9 +1,9 @@
 package ar.edu.utn.frc.tup.p4.usersservice.auth.controllers;
 
 import ar.edu.utn.frc.tup.p4.usersservice.auth.dto.PasswordChangeRequest;
-import ar.edu.utn.frc.tup.p4.usersservice.auth.dto.RefreshRequest;
 import ar.edu.utn.frc.tup.p4.usersservice.auth.services.AuthService;
 import ar.edu.utn.frc.tup.p4.usersservice.auth.services.PasswordService;
+import ar.edu.utn.frc.tup.p4.usersservice.auth.services.SessionCookieService;
 import ar.edu.utn.frc.tup.p4.usersservice.config.OpenApiConfig;
 import ar.edu.utn.frc.tup.p4.usersservice.shared.gates.SkipAccountGate;
 import ar.edu.utn.frc.tup.p4.usersservice.shared.security.GatewayPrincipal;
@@ -12,29 +12,36 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
+import org.springframework.http.HttpHeaders;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
 @Tag(name = "Auth (sesion)",
      description = "Operaciones sobre la sesion propia. Exigen un access token vigente.")
-@SecurityRequirement(name = OpenApiConfig.BEARER_SCHEME)
+@SecurityRequirement(name = OpenApiConfig.COOKIE_SCHEME)
 @RestController
 @RequestMapping("${app.api.private-path}/auth")
 public class AuthPrivateController {
 
     private final AuthService auth;
     private final PasswordService passwordService;
+    private final SessionCookieService cookies;
 
-    public AuthPrivateController(AuthService auth, PasswordService passwordService) {
+    public AuthPrivateController(AuthService auth, PasswordService passwordService, SessionCookieService cookies) {
         this.auth = auth;
         this.passwordService = passwordService;
+        this.cookies = cookies;
     }
 
     /**
      * Exempt from ALL three gates: someone with a pending account, a forced
      * password change or pending onboarding still has to be able to log out.
      * The exit endpoint of a gate is exempt from both fine-grained gates.
+     *
+     * El refresh a revocar viaja en la cookie fu_rt, no en el body: con
+     * HttpOnly el front ya no la puede leer para mandarla el mismo.
      */
     @Operation(summary = "Cierra la sesion",
                description = """
@@ -53,9 +60,12 @@ public class AuthPrivateController {
     @SkipAccountGate({SkipAccountGate.Gate.ESTADO, SkipAccountGate.Gate.PASSWORD,
                       SkipAccountGate.Gate.ONBOARDING})
     public void logout(@AuthenticationPrincipal GatewayPrincipal p,
-                       @RequestBody(required = false) RefreshRequest req) {
+                       @CookieValue(name = SessionCookieService.REFRESH_COOKIE, required = false) String refreshJti,
+                       HttpServletResponse response) {
         exigirPersona(p);
-        auth.logout(p.id(), req == null ? null : req.refreshToken());
+        auth.logout(p.id(), refreshJti);
+        response.addHeader(HttpHeaders.SET_COOKIE, cookies.clearAccess().toString());
+        response.addHeader(HttpHeaders.SET_COOKIE, cookies.clearRefresh().toString());
     }
 
     /**

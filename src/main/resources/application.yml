@@ -120,6 +120,12 @@ users:
     secret-hash: ${ADMIN_BREAKGLASS_SECRET_HASH:}
   legal:
     terms-version: "v1"          # DEC-31
+  # Set-Cookie de sesion (fu_at/fu_rt). Default true: cualquier despliegue con
+  # TLS real tiene que quedarse en true. Solo el docker-compose de este
+  # proyecto lo pisa a false via env, porque no termina TLS en ningun lado
+  # (spec "Sesion en Cookies", decision 4) - sin esto, Secure corta la cookie.
+  cookie:
+    secure: ${COOKIE_SECURE:true}
   jwt:
     issuer: users-service        # DEC-07
     access-ttl: PT10M

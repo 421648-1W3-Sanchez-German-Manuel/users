@@ -20,7 +20,7 @@ import java.util.UUID;
 
 @Tag(name = "Usuarios",
      description = "Cuenta propia, perfiles y administracion de usuarios.")
-@SecurityRequirement(name = OpenApiConfig.BEARER_SCHEME)
+@SecurityRequirement(name = OpenApiConfig.COOKIE_SCHEME)
 @RestController
 @RequestMapping("${app.api.private-path}")
 public class UserController {

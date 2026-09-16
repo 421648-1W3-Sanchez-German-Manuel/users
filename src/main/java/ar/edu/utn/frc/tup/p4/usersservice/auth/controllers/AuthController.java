@@ -3,13 +3,18 @@ package ar.edu.utn.frc.tup.p4.usersservice.auth.controllers;
 import ar.edu.utn.frc.tup.p4.usersservice.auth.dto.*;
 import ar.edu.utn.frc.tup.p4.usersservice.auth.services.AuthService;
 import ar.edu.utn.frc.tup.p4.usersservice.auth.services.PasswordService;
+import ar.edu.utn.frc.tup.p4.usersservice.auth.services.SessionCookieService;
+import ar.edu.utn.frc.tup.p4.usersservice.shared.web.ApiException;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
+import org.springframework.http.HttpHeaders;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.Map;
+import java.util.regex.Pattern;
 
 @Tag(name = "Auth (publico)",
      description = "Login en dos fases, refresh y recupero de contraseña. Anonimo: no lleva token.")
@@ -19,10 +24,12 @@ public class AuthController {
 
     private final AuthService auth;
     private final PasswordService passwordService;
+    private final SessionCookieService cookies;
 
-    public AuthController(AuthService auth, PasswordService passwordService) {
+    public AuthController(AuthService auth, PasswordService passwordService, SessionCookieService cookies) {
         this.auth = auth;
         this.passwordService = passwordService;
+        this.cookies = cookies;
     }
 
     @Operation(summary = "Fase 1 del login: valida credenciales y dispara el 2FA",
@@ -53,27 +60,59 @@ public class AuthController {
             un desafio vencido tambien sale por aca.""")
     @ApiResponse(responseCode = "429", description = "`type`: `too-many-attempts`.")
     @PostMapping("/2fa/verify")
-    public TokenResponse verificar(@Valid @RequestBody VerifyTwoFactorRequest req) {
-        return auth.verificarDosFa(req.challengeId(), req.code());
+    public SessionResponse verificar(@Valid @RequestBody VerifyTwoFactorRequest req, HttpServletResponse response) {
+        TokenResponse tokens = auth.verificarDosFa(req.challengeId(), req.code());
+        setSessionCookies(response, tokens);
+        return SessionResponse.from(tokens);
     }
 
-    /** Ruta PUBLICA: el refresh va en el body, sin Authorization. */
+    /**
+     * Ruta PUBLICA: el refresh viaja en la cookie fu_rt, nunca en el body.
+     * Sin la cookie no hay forma de distinguir "nunca hubo sesion" de
+     * "sesion cerrada" - se trata igual, mismo type que un jti invalido.
+     */
     @Operation(summary = "Rota el refresh token y emite un access nuevo",
                description = """
-                       Es PUBLICA a proposito: el refresh viaja en el body, no en `Authorization`.
-                       El access ya vencido no serviria para autenticar el pedido.
+                       Es PUBLICA a proposito: el refresh viaja en la cookie `fu_rt`, no en el
+                       body ni en `Authorization`. El access ya vencido no serviria para
+                       autenticar el pedido.
 
                        El refresh se ROTA en cada uso. Reusar uno viejo se toma como señal de robo
                        y mata la familia entera de tokens.""")
     @ApiResponse(responseCode = "200", description = "Par nuevo. El refresh anterior queda muerto.")
     @ApiResponse(responseCode = "401", description = """
             Dos `type` distintos, y la diferencia importa porque son dos pantallas distintas:
-            `session-closed` (la sesion dejo de existir: logout, cambio de contraseña o reuso
-            detectado) y `session-superseded` (hubo un login mas nuevo en otro dispositivo).
+            `session-closed` (la sesion dejo de existir: logout, cambio de contraseña, reuso
+            detectado, o directamente no habia cookie) y `session-superseded` (hubo un login mas
+            nuevo en otro dispositivo).
             Nunca `invalid-credentials`: nadie tipeo mal una contraseña en este flujo.""")
     @PostMapping("/refresh")
-    public TokenResponse refrescar(@Valid @RequestBody RefreshRequest req) {
-        return auth.refrescar(req.refreshToken());
+    public SessionResponse refrescar(
+            @CookieValue(name = SessionCookieService.REFRESH_COOKIE, required = false) String refreshJti,
+            HttpServletResponse response) {
+        if (refreshJti == null || refreshJti.isBlank()) {
+            throw ApiException.sessionClosed();
+        }
+        if (!JTI_PATTERN.matcher(refreshJti).matches()) {
+            throw ApiException.validation("refreshToken tiene que ser un UUID");
+        }
+        TokenResponse tokens = auth.refrescar(refreshJti);
+        setSessionCookies(response, tokens);
+        return SessionResponse.from(tokens);
+    }
+
+    /**
+     * El jti es un UUID: sin este chequeo, una cookie fu_rt malformada no da
+     * 400 sino que llega a Redis y sale por una clave que nunca matchea,
+     * indistinguible de una sesion cerrada. Antes de mover el refresh a la
+     * cookie esto lo validaba el @Pattern de RefreshRequest via @Valid.
+     */
+    private static final Pattern JTI_PATTERN =
+            Pattern.compile("^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$");
+
+    private void setSessionCookies(HttpServletResponse response, TokenResponse tokens) {
+        response.addHeader(HttpHeaders.SET_COOKIE, cookies.access(tokens.accessToken()).toString());
+        response.addHeader(HttpHeaders.SET_COOKIE, cookies.refresh(tokens.refreshToken()).toString());
     }
 
     @Operation(summary = "Pide el enlace de reseteo de contraseña",
