@@ -23,8 +23,8 @@ public class EmailOtpProvider implements SecondFactorProvider {
 
     @Override
     @Transactional
-    public void generarDesafio(UUID userId, String email, String firstNames) {
-        String code = otp.generar(key(userId), props.dosfaTtl());
+    public void generateChallenge(UUID userId, String email, String firstNames) {
+        String code = otp.generate(key(userId), props.twoFactorTtl());
         mails.send(
                 EmailType.TWO_FACTOR_CODE,
                 userId,
@@ -33,7 +33,7 @@ public class EmailOtpProvider implements SecondFactorProvider {
     }
 
     @Override
-    public void verificar(UUID userId, String code) { otp.verificar(key(userId), code); }
+    public void verify(UUID userId, String code) { otp.verify(key(userId), code); }
 
     private String key(UUID userId) { return "2fa:" + userId; }
 }

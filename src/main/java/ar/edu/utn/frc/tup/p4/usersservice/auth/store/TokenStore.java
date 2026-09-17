@@ -7,33 +7,32 @@ import java.util.UUID;
 /** Redis persistence contract exposed to the authentication domain. */
 public interface TokenStore {
 
-    void guardarSesion(UUID userId, String sid);
+    void saveSession(UUID userId, String sid);
 
-    Optional<String> sidDe(UUID userId);
+    Optional<String> findSessionId(UUID userId);
 
-    void borrarSesion(UUID userId);
+    void deleteSession(UUID userId);
 
     record RefreshData(UUID userId, String sid, String familyId) {
     }
 
-    void guardarRefresh(String jti, RefreshData data, Duration ttl);
+    void saveRefresh(String jti, RefreshData data, Duration ttl);
 
     Optional<RefreshData> refresh(String jti);
 
-    void revocarRefresh(String jti);
+    void revokeRefresh(String jti);
 
-    void revocarFamilia(String familyId);
+    void revokeFamily(String familyId);
 
-    boolean familiaRevocada(String familyId);
+    boolean isFamilyRevoked(String familyId);
 
-    int incrementarFallos(String key, Duration ventana);
+    int incrementFailures(String key, Duration window);
 
-    void limpiarFallos(String key);
+    void clearFailures(String key);
 
     /**
-     * Contador por ventana, generico. `bucket` separa namespaces para que dos
-     * limites distintos nunca compartan presupuesto. Devuelve el valor DESPUES
-     * de incrementar.
+     * Generic window-based counter. {@code bucket} separates namespaces so two
+     * different limits never share a budget. Returns the value AFTER incrementing.
      */
-    int incrementarUso(String bucket, String key, Duration ventana);
+    int incrementUsage(String bucket, String key, Duration window);
 }

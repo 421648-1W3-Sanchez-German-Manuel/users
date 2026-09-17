@@ -6,29 +6,29 @@ import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
 
 /**
- * DEC-14 - los gates son condiciones del ESTADO DE LA CUENTA, no del rol.
- * Meterlos en @PreAuthorize significaria repetir la misma condicion en cada
- * anotacion, y que cada controller conozca los estados.
+ * DEC-14 - gates are account-status conditions, not role conditions. Putting
+ * them in @PreAuthorize would repeat the same condition in every annotation and
+ * require every controller to know the statuses.
  *
- * <p><b>Por que vive en la base y no en el lote que la implementa.</b> La
- * anotacion la ESCRIBEN tres lotes y la INTERPRETA uno solo:
+ * <p><b>Why it lives in the base rather than in the batch that implements it.</b>
+ * Three batches WRITE the annotation and only one INTERPRETS it:
  *
  * <ul>
- *   <li>L4 (T8) escribe el {@code AccountGateInterceptor}, que es quien la lee
- *       y decide. Esa es la logica, y sigue siendo de L4.</li>
- *   <li>L1 (T14, T15) la pone en logout, refresh y cambio de password.</li>
- *   <li>L6 la pone en los endpoints de onboarding.</li>
+ *   <li>L4 (T8) writes the {@code AccountGateInterceptor}, which reads the
+ *       annotation and decides. That logic still belongs to L4.</li>
+ *   <li>L1 (T14, T15) puts it on logout, refresh and password change.</li>
+ *   <li>L6 puts it on the onboarding endpoints.</li>
  * </ul>
  *
- * Una anotacion que tres lotes necesitan para COMPILAR es una costura, y las
- * costuras son de la base por definicion. Mientras vivio dentro de T8, L1 no
- * podia escribir una linea de T14 hasta que L4 mergeara: dos lotes de olas
- * distintas serializados por un archivo de seis lineas.
+ * An annotation that three batches need in order to COMPILE is a seam, and
+ * seams belong to the base by definition. While it lived inside T8, L1 could
+ * not write a line of T14 until L4 merged: two batches from different waves
+ * serialized by a six-line file.
  *
- * <p><b>Sin el interceptor de L4 esto no exime de nada, y esta bien.</b> Es un
- * marcador: sin nadie que lo lea, los gates simplemente no se aplican y los
- * endpoints funcionan. Los tests que verifican que el gate EXIME de verdad son
- * de L4, junto con el interceptor que lo hace cierto.
+ * <p><b>Without L4's interceptor this exempts nothing, and that is fine.</b> It
+ * is a marker: without anything reading it, the gates simply do not apply and
+ * the endpoints work. The tests that verify the gate really EXEMPTS belong to
+ * L4, together with the interceptor that makes it true.
  */
 @Target(ElementType.METHOD)
 @Retention(RetentionPolicy.RUNTIME)
@@ -36,5 +36,5 @@ public @interface SkipAccountGate {
 
     Gate[] value();
 
-    enum Gate { ESTADO, PASSWORD, ONBOARDING }
+    enum Gate { ACCOUNT_STATUS, PASSWORD, ONBOARDING }
 }

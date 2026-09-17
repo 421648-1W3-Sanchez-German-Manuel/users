@@ -23,8 +23,8 @@ class EmailTypeTest extends AbstractIntegrationTest {
         variables.put("code", "123456");
         variables.put("enlace", "https://app.tpi.utn.frc/reset?token=x");
         variables.put("accountStatus", "PENDING_COURSE");
-        variables.put("reason", "un motivo");
-        variables.put("emailSolicitado", "otro@utn.edu.ar");
+        variables.put("reason", "a reason");
+        variables.put("emailSolicitado", "other@utn.edu.ar");
         variables.put("resultado", "APPROVED");
         variables.put("adminId", "a3f1c2e4");
         return variables;
@@ -43,7 +43,7 @@ class EmailTypeTest extends AbstractIntegrationTest {
     void eachTemplateRendersWithoutUnresolvedVariables(EmailType type) {
         var mail = templates.render(type, vars());
 
-        assertThat(mail.asunto()).isNotBlank();
+        assertThat(mail.subject()).isNotBlank();
         assertThat(mail.html()).isNotBlank();
         assertThat(mail.html()).doesNotContain("${").doesNotContain("[[");
     }

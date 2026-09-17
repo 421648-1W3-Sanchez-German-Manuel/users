@@ -11,7 +11,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.Map;
 
 /** DEC-31 - public with NO token: it has to be readable BEFORE having an account. */
-@Tag(name = "Legal", description = "Terminos y condiciones vigentes.")
+@Tag(name = "Legal", description = "Current terms and conditions.")
 @RestController
 @RequestMapping("${app.api.public-path}/legal")
 public class LegalController {
@@ -22,19 +22,19 @@ public class LegalController {
         this.version = version;
     }
 
-    @Operation(summary = "Terminos y condiciones vigentes",
+    @Operation(summary = "Current terms and conditions",
                description = """
-                       Publico y SIN token a proposito: hay que poder leerlo ANTES de tener
-                       cuenta. Exigir un token para leer lo que hay que aceptar para crear la
-                       cuenta seria un circulo.
+                        Deliberately public and available WITHOUT a token: it must be readable
+                        BEFORE creating an account. Requiring a token to read what must be accepted
+                        to create an account would be circular.
 
-                       El campo `version` es el que va en `termsVersion` al registrarse.""")
+                        The `version` field is sent as `termsVersion` during registration.""")
     @ApiResponse(responseCode = "200",
-                 description = "`version` (la vigente) y `texto` (el contenido en Markdown).")
+                  description = "`version` (the current version) and `texto` (the Markdown content).")
     @GetMapping("/terms")
-    public Map<String, String> tyc() throws Exception {
-        String texto = new String(new ClassPathResource("legal/terms-" + version + ".md")
+    public Map<String, String> terms() throws Exception {
+        String content = new String(new ClassPathResource("legal/terms-" + version + ".md")
                 .getInputStream().readAllBytes(), StandardCharsets.UTF_8);
-        return Map.of("version", version, "texto", texto);
+        return Map.of("version", version, "texto", content);
     }
 }

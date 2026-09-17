@@ -57,15 +57,15 @@ public class OtpService {
     }
 
     /**
-     * Pedir un codigo nuevo NO devuelve el presupuesto de intentos.
+     * Requesting a new code does NOT replenish the attempt budget.
      *
-     * Borrar attemptsKey aca dejaba el tope de 5 al alcance del que ataca:
-     * con la password en la mano hacia {login -> 5 intentos} en loop y el
-     * segundo factor no limitaba nada. El presupuesto es por ventana de una
-     * hora, no por desafio, y se devuelve solo al acertar: el script CONSUME
-     * borra el codigo y los intentos en la misma operacion atomica.
+     * Deleting {@code attemptsKey} here let an attacker bypass the limit of five:
+     * with the password, they could loop through {login -> 5 attempts}, making the
+     * second factor effectively unlimited. The budget applies to a one-hour window,
+     * not to each challenge, and is replenished only after success: the CONSUME
+     * script deletes the code and attempts in the same atomic operation.
      */
-    public String generar(String key, Duration ttl) {
+    public String generate(String key, Duration ttl) {
         String code = String.format("%06d", RANDOM.nextInt(1_000_000));
         redis.opsForValue().set(key, code, ttl);
         return code;
@@ -74,7 +74,7 @@ public class OtpService {
     /**
      * Returns the same error for wrong, expired, and unknown codes.
      */
-    public void verificar(String key, String code) {
+    public void verify(String key, String code) {
         Long consumed = redis.execute(CONSUME, List.of(key, attemptsKey(key)), code);
         if (consumed != null && consumed == 1L) {
             return;
@@ -88,7 +88,7 @@ public class OtpService {
                 INCR_WITH_TTL,
                 List.of(attemptsKey(key)),
                 String.valueOf(ATTEMPTS_TTL_SECONDS));
-        if (attempts != null && attempts >= properties.maxIntentos()) {
+        if (attempts != null && attempts >= properties.maxAttempts()) {
             redis.delete(key);
             redis.delete(attemptsKey(key));
         }

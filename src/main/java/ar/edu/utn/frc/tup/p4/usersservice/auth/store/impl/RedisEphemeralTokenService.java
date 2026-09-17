@@ -17,17 +17,17 @@ public class RedisEphemeralTokenService implements EphemeralTokenService {
     }
 
     @Override
-    public void guardar(String key, String valor, Duration ttl) {
-        redis.opsForValue().set(key, valor, ttl);
+    public void save(String key, String value, Duration ttl) {
+        redis.opsForValue().set(key, value, ttl);
     }
 
     @Override
-    public Optional<String> consumir(String key) {
+    public Optional<String> consume(String key) {
         return Optional.ofNullable(redis.opsForValue().getAndDelete(key));
     }
 
     @Override
-    public Optional<String> verificar(String key) {
+    public Optional<String> find(String key) {
         return Optional.ofNullable(redis.opsForValue().get(key));
     }
 }

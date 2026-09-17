@@ -1,10 +1,10 @@
 package ar.edu.utn.frc.tup.p4.usersservice.auth.dto;
 
 /**
- * Lo que recibe el cliente tras login/refresh. Nunca los tokens: viajan en
- * las cookies HttpOnly fu_at/fu_rt (SessionCookieService), invisibles para
- * JS a proposito. expiresIn es lo unico que el front todavia necesita, para
- * el timer de refresh proactivo.
+ * The response received by the client after login or refresh. It never contains
+ * tokens: they travel in the HttpOnly fu_at/fu_rt cookies (SessionCookieService),
+ * deliberately hidden from JavaScript. expiresIn is the only value the frontend
+ * still needs for the proactive refresh timer.
  */
 public record SessionResponse(long expiresIn) {
     public static SessionResponse from(TokenResponse tokens) {

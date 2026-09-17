@@ -18,8 +18,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
-@Tag(name = "Usuarios",
-     description = "Cuenta propia, perfiles y administracion de usuarios.")
+@Tag(name = "Users",
+     description = "Own account, profiles, and user administration.")
 @SecurityRequirement(name = OpenApiConfig.COOKIE_SCHEME)
 @RestController
 @RequestMapping("${app.api.private-path}")
@@ -30,21 +30,20 @@ public class UserController {
     public UserController(UserService users) { this.users = users; }
 
     /**
-     * Exenta de los tres gates. Es la ruta que le dice a la persona POR QUE
-     * esta frenada: si el gate la cortara, la cuenta quedaria como una caja
-     * negra y el frontend no tendria como explicar el bloqueo.
+     * Exempt from all three gates. This route tells the person WHY access is
+     * blocked: if a gate intercepted it, the account would be a black box and
+     * the frontend could not explain the block.
      */
-    @Operation(summary = "La cuenta propia, completa",
+    @Operation(summary = "The complete current account",
                description = """
-                       Exenta de los TRES gates, y es la unica que lo esta por este motivo: es
-                       la ruta que le dice a la persona POR QUE esta frenada. Si un gate la
-                       cortara, la cuenta seria una caja negra y el frontend no tendria con que
-                       explicar el bloqueo.
+                        Exempt from all THREE gates, and the only route exempt for this reason: it
+                        tells the person WHY access is blocked. If a gate intercepted it, the
+                        account would be a black box and the frontend could not explain the block.
 
-                       Mirar `accountStatus`, `mustChangePassword` y `firstLogin` para saber a
-                       que pantalla mandar antes de dejar entrar al resto de la app.""")
-    @ApiResponse(responseCode = "200", description = "La cuenta propia, incluidos email y legajo.")
-    @SkipAccountGate({SkipAccountGate.Gate.ESTADO, SkipAccountGate.Gate.PASSWORD,
+                        Inspect `accountStatus`, `mustChangePassword`, and `firstLogin` to determine
+                        which screen to show before allowing access to the rest of the application.""")
+    @ApiResponse(responseCode = "200", description = "The current account, including email and legajo.")
+    @SkipAccountGate({SkipAccountGate.Gate.ACCOUNT_STATUS, SkipAccountGate.Gate.PASSWORD,
                       SkipAccountGate.Gate.ONBOARDING})
     @GetMapping("/me")
     public UserMeResponse me(@AuthenticationPrincipal GatewayPrincipal p) {
@@ -52,21 +51,22 @@ public class UserController {
     }
 
     /**
-     * Es la SALIDA del gate de onboarding, asi que esta exenta de los dos
-     * gates finos (regla 4). Sin la exencion de ONBOARDING la ruta queda
-     * cortada por el gate que viene a resolver y la cuenta no sale nunca; sin
-     * la de PASSWORD se traba el ADMIN inicial, que nace con las dos
-     * condiciones pendientes a la vez.
+     * This is the EXIT from the onboarding gate, so it is exempt from both
+     * fine-grained gates (rule 4). Without the ONBOARDING exemption, the gate
+     * it resolves would intercept the route and the account could never leave;
+     * without the PASSWORD exemption, the initial ADMIN, which starts with
+     * both conditions pending, would be locked out.
      */
-    @Operation(summary = "Completa el onboarding",
+    @Operation(summary = "Completes onboarding",
                description = """
-                       Es la SALIDA del gate de onboarding, asi que esta exenta de los dos gates
-                       finos. Sin la exencion de ONBOARDING la ruta la cortaria el gate que
-                       viene a resolver y la cuenta no saldria nunca; sin la de PASSWORD se
-                       traba el ADMIN inicial, que nace con las dos condiciones pendientes.
+                        This is the EXIT from the onboarding gate, so it is exempt from both
+                        fine-grained gates. Without the ONBOARDING exemption, the gate it resolves
+                        would intercept the route and the account could never leave; without the
+                        PASSWORD exemption, the initial ADMIN, which starts with both conditions
+                        pending, would be locked out.
 
-                       `avatarRef` es OPCIONAL.""")
-    @ApiResponse(responseCode = "200", description = "Onboarding completo. El gate deja de cortar.")
+                        `avatarRef` is OPTIONAL.""")
+    @ApiResponse(responseCode = "200", description = "Onboarding complete. The gate no longer blocks access.")
     @SkipAccountGate({SkipAccountGate.Gate.PASSWORD, SkipAccountGate.Gate.ONBOARDING})
     @PatchMapping("/me/onboarding")
     public void onboarding(@AuthenticationPrincipal GatewayPrincipal p,
@@ -74,30 +74,30 @@ public class UserController {
         users.completeOnboarding(p.id(), r.githubUsername(), r.avatarRef(), r.tourOk());
     }
 
-    @Operation(summary = "Perfil publico de otra persona",
+    @Operation(summary = "Another person's public profile",
                description = """
-                       Lo que ve cualquier companero: nombre, usuario de GitHub y avatar.
-                       **NO trae email, ni legajo, ni estado de cuenta**; para eso esta `/me`,
-                       que devuelve la cuenta PROPIA.""")
-    @ApiResponse(responseCode = "200", description = "Perfil publico.")
+                        What any classmate can see: name, GitHub username, and avatar.
+                        **Does NOT include email, legajo, or account status**; use `/me` for that,
+                        which returns the current user's OWN account.""")
+    @ApiResponse(responseCode = "200", description = "Public profile.")
     @ApiResponse(responseCode = "404", description = "`type`: `route-not-found`.")
     @GetMapping("/profile/{id}")
-    public ProfileResponse perfil(@PathVariable UUID id) {
-        return users.perfil(id);
+    public ProfileResponse profile(@PathVariable UUID id) {
+        return users.profile(id);
     }
 
     /** ADMIN/GESTOR directory. Only active accounts, newest first. */
-    @Operation(summary = "Directorio de usuarios (ADMIN/GESTOR)",
+    @Operation(summary = "User directory (ADMIN/GESTOR)",
                description = """
-                       Solo cuentas ACTIVAS, de la mas nueva a la mas vieja.
+                        ACTIVE accounts only, newest first.
 
-                       El ADMIN ve el directorio completo. El GESTOR ve solo cuentas
-                       PROFESSOR/GESTOR: nunca ADMIN ni STUDENT.""")
-    @ApiResponse(responseCode = "200", description = "Listado de cuentas activas.")
+                        ADMIN sees the complete directory. GESTOR sees only PROFESSOR/GESTOR
+                        accounts, never ADMIN or STUDENT.""")
+    @ApiResponse(responseCode = "200", description = "List of active accounts.")
     @GetMapping
     @PreAuthorize("hasAnyRole('ADMIN', 'GESTOR')")
-    public List<UserListItemResponse> listar(@AuthenticationPrincipal GatewayPrincipal p) {
-        return users.listar(p.id());
+    public List<UserListItemResponse> list(@AuthenticationPrincipal GatewayPrincipal p) {
+        return users.list(p.id());
     }
 
     /**
@@ -106,60 +106,60 @@ public class UserController {
      * only ADMIN accounts (see CreateUserRequest) — GESTOR accounts come in
      * through the whitelist, like PROFESSOR.
      */
-    @Operation(summary = "Crea un ADMIN (ADMIN)",
+    @Operation(summary = "Creates an ADMIN (ADMIN)",
                description = """
-                       **Solo crea ADMIN.** PROFESSOR y STUDENT entran unicamente por whitelist
-                       + auto-registro: un ADMIN dandolos de alta con contraseña directa los
-                       dejaba en `PENDING_EMAIL` sin enlace de activacion, o sea una cuenta
-                       imposible de activar.
+                        **Creates ADMIN only.** PROFESSOR and STUDENT enter only through the
+                        whitelist plus self-registration: an ADMIN creating them directly with a
+                        password would leave them in `PENDING_EMAIL` without an activation link,
+                        making the account impossible to activate.
 
-                       La cuenta nace con cambio de contraseña forzado y onboarding pendiente.""")
-    @ApiResponse(responseCode = "200", description = "Creado. Devuelve el `id`.")
+                        The account starts with a forced password change and pending onboarding.""")
+    @ApiResponse(responseCode = "200", description = "Created. Returns the `id`.")
     @ApiResponse(responseCode = "409", description = "`type`: `duplicate-email`.")
     @PostMapping
     @PreAuthorize("hasRole('ADMIN')")
-    public Map<String, String> crear(@Valid @RequestBody CreateUserRequest r) {
-        return Map.of("id", users.crear(r.firstNames(), r.lastNames(), r.email(),
+    public Map<String, String> create(@Valid @RequestBody CreateUserRequest r) {
+        return Map.of("id", users.create(r.firstNames(), r.lastNames(), r.email(),
                 r.password()).toString());
     }
 
     /** Layer 1 here, layer 2 (a GESTOR may only touch PROFESSOR/GESTOR) in the service. */
-    @Operation(summary = "Da de baja una cuenta (ADMIN/GESTOR)",
+    @Operation(summary = "Deactivates an account (ADMIN/GESTOR)",
                description = """
-                       Baja LOGICA: nada se borra de verdad (no-negociable 6).
+                        LOGICAL deactivation: nothing is physically deleted (non-negotiable 6).
 
-                       Pide reautenticacion completa en el body -contraseña, code de 2FA y el
-                       nombre de usuario escrito a mano- porque es una operacion destructiva
-                       sobre la cuenta de otra persona.
+                        Requires complete reauthentication in the body: password, 2FA code, and
+                        the manually entered username, because this is a destructive operation on
+                        another person's account.
 
-                       Dos capas de defensa distintas: la anotacion pregunta si tiene el rol, y
-                       el servicio pregunta si la operacion deja la plataforma sin ningun ADMIN
-                       activo, o si es un GESTOR intentando dar de baja a alguien fuera de su
-                       alcance PROFESSOR/GESTOR (ni ADMIN ni STUDENT). Un ADMIN tampoco puede
-                       darse de baja a si mismo.""")
-    @ApiResponse(responseCode = "200", description = "Cuenta dada de baja.")
-    @ApiResponse(responseCode = "401", description = "`type`: `invalid-credentials`. La reautenticacion fallo.")
-    @ApiResponse(responseCode = "403", description = "`type`: `access-denied`. Un GESTOR intento salir de su alcance PROFESSOR/GESTOR.")
+                        Two distinct defensive layers: the annotation checks the role, and the
+                        service checks whether the operation would leave the platform without an
+                        active ADMIN or whether a GESTOR is trying to deactivate someone outside
+                        the PROFESSOR/GESTOR scope (neither ADMIN nor STUDENT). An ADMIN also cannot
+                        deactivate their own account.""")
+    @ApiResponse(responseCode = "200", description = "Account deactivated.")
+    @ApiResponse(responseCode = "401", description = "`type`: `invalid-credentials`. Reauthentication failed.")
+    @ApiResponse(responseCode = "403", description = "`type`: `access-denied`. A GESTOR attempted to exceed the PROFESSOR/GESTOR scope.")
     @ApiResponse(responseCode = "409", description = """
-            `type`: `last-admin`. La plataforma no puede quedarse sin ADMIN activo.""")
+            `type`: `last-admin`. The platform cannot be left without an active ADMIN.""")
     @DeleteMapping("/{id}")
     @PreAuthorize("hasAnyRole('ADMIN', 'GESTOR')")
-    public void baja(@AuthenticationPrincipal GatewayPrincipal p, @PathVariable UUID id,
-                     @Valid @RequestBody AdminDeactivationRequest req) {
+    public void deactivate(@AuthenticationPrincipal GatewayPrincipal p, @PathVariable UUID id,
+                           @Valid @RequestBody AdminDeactivationRequest req) {
         users.deactivate(p.id(), id, req);
     }
 
-    @Operation(summary = "Cambia el rol de una cuenta (ADMIN/GESTOR)",
+    @Operation(summary = "Changes an account role (ADMIN/GESTOR)",
                description = """
-                       Misma defensa de dos capas que la baja: bajarle el rol al ultimo ADMIN
-                       activo deja la plataforma sin nadie que administre, asi que el servicio
-                       lo corta aunque quien lo pida sea ADMIN.
+                        The same two defensive layers as deactivation: demoting the last active
+                        ADMIN would leave the platform without an administrator, so the service
+                        blocks it even when an ADMIN requests it.
 
-                       Un GESTOR solo puede mover cuentas PROFESSOR/GESTOR entre esos dos roles:
-                       no puede tocar una cuenta ADMIN ni otorgar ADMIN, y tampoco puede tocar ni
-                       crear cuentas STUDENT por esta via.""")
-    @ApiResponse(responseCode = "200", description = "Rol cambiado.")
-    @ApiResponse(responseCode = "403", description = "`type`: `access-denied`. Un GESTOR intento salir de su alcance PROFESSOR/GESTOR.")
+                        A GESTOR can move PROFESSOR/GESTOR accounts only between those two roles:
+                        it cannot modify an ADMIN account or grant ADMIN, and it cannot modify or
+                        create STUDENT accounts this way.""")
+    @ApiResponse(responseCode = "200", description = "Role changed.")
+    @ApiResponse(responseCode = "403", description = "`type`: `access-denied`. A GESTOR attempted to exceed the PROFESSOR/GESTOR scope.")
     @ApiResponse(responseCode = "409", description = "`type`: `last-admin`.")
     @PatchMapping("/{id}/role")
     @PreAuthorize("hasAnyRole('ADMIN', 'GESTOR')")

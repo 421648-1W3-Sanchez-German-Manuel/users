@@ -15,7 +15,7 @@ import java.util.UUID;
 /**
  * Decorates the real publisher to capture the reset link token. It never logs
  * it: it only keeps it in memory for the assert. The real e-mail still travels
- * the same camino de produccion.
+ * the same production path.
  *
  * <p>Captures ONLY {@code EmailType.RESET_PASSWORD}. The activation token
  * travels the same mechanism but belongs to another lot (U17 has its own
@@ -23,7 +23,7 @@ import java.util.UUID;
  */
 public class TestResetSpy extends NotificationEventPublisher {
 
-    private volatile String ultimoEnlace;
+    private volatile String lastLink;
 
     public TestResetSpy(EmailTemplateService templates, AccountEventPublisher outbox,
                         KafkaTopicsProperties topics) {
@@ -31,16 +31,16 @@ public class TestResetSpy extends NotificationEventPublisher {
     }
 
     @Override
-    public void send(EmailType tipo, UUID userId, String to, Map<String, Object> vars) {
-        if (tipo == EmailType.RESET_PASSWORD) {
-            this.ultimoEnlace = (String) vars.get("enlace");
+    public void send(EmailType type, UUID userId, String to, Map<String, Object> variables) {
+        if (type == EmailType.RESET_PASSWORD) {
+            this.lastLink = (String) variables.get("enlace");
         }
-        super.send(tipo, userId, to, vars);
+        super.send(type, userId, to, variables);
     }
 
     /** The token inside the captured link, or null if nothing was captured yet. */
-    public String ultimoToken() {
-        return ultimoEnlace == null ? null : ultimoEnlace.substring(ultimoEnlace.indexOf("token=") + 6);
+    public String lastToken() {
+        return lastLink == null ? null : lastLink.substring(lastLink.indexOf("token=") + 6);
     }
 
     /**

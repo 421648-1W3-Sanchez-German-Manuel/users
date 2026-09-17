@@ -27,16 +27,16 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * LoginIT y SingleSessionRefreshIT llaman a AuthService directo y nunca ven
- * un header HTTP. Esto es lo unico que mira lo que el NAVEGADOR recibe de
- * verdad: los Set-Cookie, con sus atributos. El gateway y el front dependen
- * de HttpOnly/Path/SameSite (SessionCookieService) para que la cookie ni se
- * lea por JS ni se mande a otra ruta, y de que el logout la borre con el
- * MISMO Path con el que se emitio.
+ * LoginIT and SingleSessionRefreshIT call AuthService directly and never see an
+ * HTTP header. This is the only test that inspects what the BROWSER actually
+ * receives: the Set-Cookie headers and their attributes. The gateway and
+ * frontend rely on HttpOnly/Path/SameSite (SessionCookieService) to prevent JS
+ * from reading the cookie or sending it to another path, and on logout clearing
+ * it with the SAME Path used when it was issued.
  *
- * <p>RANDOM_PORT + HttpClient del JDK, mismo criterio que OpenApiIT: esto
- * depende de headers HTTP crudos (varios Set-Cookie en la misma respuesta),
- * que MockMvc no expone igual que un socket real.
+ * <p>RANDOM_PORT plus the JDK HttpClient follows the same reasoning as OpenApiIT:
+ * this depends on raw HTTP headers (multiple Set-Cookie headers in one response),
+ * which MockMvc does not expose like a real socket.
  */
 @Import(TestOtpSpy.Config.class)
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
@@ -50,37 +50,37 @@ class SessionCookieIT extends AbstractIntegrationTest {
     @Autowired UserRepository repo;
     @Autowired PasswordEncoder encoder;
     @Autowired TestOtpSpy otpSpy;
-    @Autowired CookieProperties cookieProps;
+    @Autowired CookieProperties cookieProperties;
 
-    private User crearActivo(String email, String password) {
-        User u = User.create("Ana", "Perez", email, encoder.encode(password), Role.STUDENT, "v1");
-        u.forceStatusForTest(AccountStatus.ACTIVE);
-        return repo.saveAndFlush(u);
+    private User createActiveUser(String email, String password) {
+        User user = User.create("Ana", "Perez", email, encoder.encode(password), Role.STUDENT, "v1");
+        user.forceStatusForTest(AccountStatus.ACTIVE);
+        return repo.saveAndFlush(user);
     }
 
     private HttpResponse<String> post(String path, String body, String... headers)
             throws IOException, InterruptedException {
-        HttpRequest.Builder b = HttpRequest.newBuilder()
+        HttpRequest.Builder builder = HttpRequest.newBuilder()
                 .uri(URI.create("http://localhost:" + port + path))
                 .header("Content-Type", "application/json")
                 .POST(HttpRequest.BodyPublishers.ofString(body));
         for (int i = 0; i + 1 < headers.length; i += 2) {
-            b.header(headers[i], headers[i + 1]);
+            builder.header(headers[i], headers[i + 1]);
         }
-        return CLIENT.send(b.build(), HttpResponse.BodyHandlers.ofString());
+        return CLIENT.send(builder.build(), HttpResponse.BodyHandlers.ofString());
     }
 
-    private String cookieDe(HttpResponse<String> res, String nombre) {
-        return res.headers().allValues("set-cookie").stream()
-                .filter(c -> c.startsWith(nombre + "="))
+    private String cookieFrom(HttpResponse<String> response, String name) {
+        return response.headers().allValues("set-cookie").stream()
+                .filter(cookie -> cookie.startsWith(name + "="))
                 .findFirst()
-                .orElseThrow(() -> new AssertionError("no vino Set-Cookie de " + nombre));
+                .orElseThrow(() -> new AssertionError("No Set-Cookie received for " + name));
     }
 
-    /** Assert comun: HttpOnly, SameSite=Strict y Secure segun CookieProperties. */
-    private void assertAtributosComunes(String cookie) {
+    /** Common assertion: HttpOnly, SameSite=Strict, and Secure according to CookieProperties. */
+    private void assertCommonAttributes(String cookie) {
         assertThat(cookie).contains("HttpOnly").contains("SameSite=Strict");
-        if (cookieProps.secure()) {
+        if (cookieProperties.secure()) {
             assertThat(cookie).contains("Secure");
         } else {
             assertThat(cookie).doesNotContain("Secure");
@@ -88,85 +88,86 @@ class SessionCookieIT extends AbstractIntegrationTest {
     }
 
     @Test
-    void el_2fa_verify_setea_fu_at_y_fu_rt_httponly_con_su_propio_path() throws Exception {
-        crearActivo("cookie1" + SUF, "passwordvalida1");
+    void twoFactorVerificationSetsHttpOnlyAccessAndRefreshCookiesWithTheirOwnPaths() throws Exception {
+        createActiveUser("cookie1" + SUF, "validpassword1");
 
-        var loginRes = post("/api/users/public/auth/login",
-                "{\"email\":\"cookie1" + SUF + "\",\"password\":\"passwordvalida1\"}");
-        String challengeId = JSON.readTree(loginRes.body()).get("challengeId").asText();
+        var loginResponse = post("/api/users/public/auth/login",
+                "{\"email\":\"cookie1" + SUF + "\",\"password\":\"validpassword1\"}");
+        String challengeId = JSON.readTree(loginResponse.body()).get("challengeId").asText();
 
-        var verifyRes = post("/api/users/public/auth/2fa/verify",
-                "{\"challengeId\":\"" + challengeId + "\",\"code\":\"" + otpSpy.ultimoCodigo() + "\"}");
+        var verificationResponse = post("/api/users/public/auth/2fa/verify",
+                "{\"challengeId\":\"" + challengeId + "\",\"code\":\"" + otpSpy.lastCode() + "\"}");
 
-        assertThat(verifyRes.statusCode()).isEqualTo(200);
-        // El body ya NO lleva los tokens (SessionResponse): solo expiresIn.
-        assertThat(verifyRes.body()).doesNotContain("accessToken").doesNotContain("refreshToken");
+        assertThat(verificationResponse.statusCode()).isEqualTo(200);
+        // The body NO longer contains tokens (SessionResponse), only expiresIn.
+        assertThat(verificationResponse.body()).doesNotContain("accessToken").doesNotContain("refreshToken");
 
-        List<String> setCookies = verifyRes.headers().allValues("set-cookie");
+        List<String> setCookies = verificationResponse.headers().allValues("set-cookie");
         assertThat(setCookies).hasSize(2);
 
-        String accessCookie = cookieDe(verifyRes, SessionCookieService.ACCESS_COOKIE);
-        assertAtributosComunes(accessCookie);
+        String accessCookie = cookieFrom(verificationResponse, SessionCookieService.ACCESS_COOKIE);
+        assertCommonAttributes(accessCookie);
         assertThat(accessCookie).contains("Path=/;");
 
-        String refreshCookie = cookieDe(verifyRes, SessionCookieService.REFRESH_COOKIE);
-        assertAtributosComunes(refreshCookie);
+        String refreshCookie = cookieFrom(verificationResponse, SessionCookieService.REFRESH_COOKIE);
+        assertCommonAttributes(refreshCookie);
         assertThat(refreshCookie).contains("Path=/api/users/;");
     }
 
     @Test
-    void el_refresh_rota_fu_rt_y_lo_manda_con_el_mismo_path() throws Exception {
-        crearActivo("cookie2" + SUF, "passwordvalida1");
+    void refreshRotatesTheRefreshCookieAndSendsItWithTheSamePath() throws Exception {
+        createActiveUser("cookie2" + SUF, "validpassword1");
 
-        var loginRes = post("/api/users/public/auth/login",
-                "{\"email\":\"cookie2" + SUF + "\",\"password\":\"passwordvalida1\"}");
-        String challengeId = JSON.readTree(loginRes.body()).get("challengeId").asText();
-        var verifyRes = post("/api/users/public/auth/2fa/verify",
-                "{\"challengeId\":\"" + challengeId + "\",\"code\":\"" + otpSpy.ultimoCodigo() + "\"}");
-        String refreshCookieValor = extraerValor(cookieDe(verifyRes, SessionCookieService.REFRESH_COOKIE));
+        var loginResponse = post("/api/users/public/auth/login",
+                "{\"email\":\"cookie2" + SUF + "\",\"password\":\"validpassword1\"}");
+        String challengeId = JSON.readTree(loginResponse.body()).get("challengeId").asText();
+        var verificationResponse = post("/api/users/public/auth/2fa/verify",
+                "{\"challengeId\":\"" + challengeId + "\",\"code\":\"" + otpSpy.lastCode() + "\"}");
+        String refreshCookieValue = extractValue(
+                cookieFrom(verificationResponse, SessionCookieService.REFRESH_COOKIE));
 
-        var refreshRes = post("/api/users/public/auth/refresh", "",
-                "Cookie", SessionCookieService.REFRESH_COOKIE + "=" + refreshCookieValor);
+        var refreshResponse = post("/api/users/public/auth/refresh", "",
+                "Cookie", SessionCookieService.REFRESH_COOKIE + "=" + refreshCookieValue);
 
-        assertThat(refreshRes.statusCode()).isEqualTo(200);
-        String nuevoRefresh = cookieDe(refreshRes, SessionCookieService.REFRESH_COOKIE);
-        assertAtributosComunes(nuevoRefresh);
-        assertThat(nuevoRefresh).contains("Path=/api/users/;");
-        // Rotado: el jti nuevo no es el que mando.
-        assertThat(extraerValor(nuevoRefresh)).isNotEqualTo(refreshCookieValor);
+        assertThat(refreshResponse.statusCode()).isEqualTo(200);
+        String newRefreshCookie = cookieFrom(refreshResponse, SessionCookieService.REFRESH_COOKIE);
+        assertCommonAttributes(newRefreshCookie);
+        assertThat(newRefreshCookie).contains("Path=/api/users/;");
+        // It was rotated: the new jti differs from the one sent.
+        assertThat(extractValue(newRefreshCookie)).isNotEqualTo(refreshCookieValue);
     }
 
     @Test
-    void un_fu_rt_malformado_da_400_validation_y_no_llega_a_redis() throws Exception {
-        var refreshRes = post("/api/users/public/auth/refresh", "",
-                "Cookie", SessionCookieService.REFRESH_COOKIE + "=no-es-un-uuid");
+    void malformedRefreshCookieReturns400ValidationWithoutReachingRedis() throws Exception {
+        var refreshResponse = post("/api/users/public/auth/refresh", "",
+                "Cookie", SessionCookieService.REFRESH_COOKIE + "=not-a-uuid");
 
-        assertThat(refreshRes.statusCode()).isEqualTo(400);
-        assertThat(refreshRes.body()).contains("validation");
+        assertThat(refreshResponse.statusCode()).isEqualTo(400);
+        assertThat(refreshResponse.body()).contains("validation");
     }
 
     @Test
-    void el_logout_limpia_fu_at_y_fu_rt_con_maxAge_cero_y_el_mismo_path() throws Exception {
-        User u = crearActivo("cookie3" + SUF, "passwordvalida1");
+    void logoutClearsAccessAndRefreshCookiesWithZeroMaxAgeAndTheSamePath() throws Exception {
+        User user = createActiveUser("cookie3" + SUF, "validpassword1");
 
-        var logoutRes = post("/api/users/auth/logout", "",
+        var logoutResponse = post("/api/users/auth/logout", "",
                 IdentityHeaders.PRINCIPAL_TYPE, "user",
-                IdentityHeaders.USER_ID, u.getId().toString(),
+                IdentityHeaders.USER_ID, user.getId().toString(),
                 IdentityHeaders.USER_ROLES, Role.STUDENT.name());
 
-        assertThat(logoutRes.statusCode()).isEqualTo(200);
+        assertThat(logoutResponse.statusCode()).isEqualTo(200);
 
-        String accessClear = cookieDe(logoutRes, SessionCookieService.ACCESS_COOKIE);
-        assertAtributosComunes(accessClear);
+        String accessClear = cookieFrom(logoutResponse, SessionCookieService.ACCESS_COOKIE);
+        assertCommonAttributes(accessClear);
         assertThat(accessClear).contains("Path=/;").contains("Max-Age=0");
 
-        String refreshClear = cookieDe(logoutRes, SessionCookieService.REFRESH_COOKIE);
-        assertAtributosComunes(refreshClear);
+        String refreshClear = cookieFrom(logoutResponse, SessionCookieService.REFRESH_COOKIE);
+        assertCommonAttributes(refreshClear);
         assertThat(refreshClear).contains("Path=/api/users/;").contains("Max-Age=0");
     }
 
-    private String extraerValor(String setCookieHeader) {
-        String sinNombre = setCookieHeader.substring(setCookieHeader.indexOf('=') + 1);
-        return sinNombre.substring(0, sinNombre.indexOf(';'));
+    private String extractValue(String setCookieHeader) {
+        String withoutName = setCookieHeader.substring(setCookieHeader.indexOf('=') + 1);
+        return withoutName.substring(0, withoutName.indexOf(';'));
     }
 }

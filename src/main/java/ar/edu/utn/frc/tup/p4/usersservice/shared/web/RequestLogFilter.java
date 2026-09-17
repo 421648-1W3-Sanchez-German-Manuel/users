@@ -47,12 +47,12 @@ public class RequestLogFilter extends OncePerRequestFilter {
      * is repeated because this filter cannot assume the gateway is always on
      * the other side.
      */
-    private static final Pattern ID_VALIDO = Pattern.compile("[A-Za-z0-9._-]{1,64}");
+    private static final Pattern VALID_ID = Pattern.compile("[A-Za-z0-9._-]{1,64}");
 
     @Override
     protected void doFilterInternal(HttpServletRequest req, HttpServletResponse res,
                                     FilterChain chain) throws ServletException, IOException {
-        long inicio = System.nanoTime();
+        long start = System.nanoTime();
         putInMdc(MDC_REQUEST_ID, req.getHeader("X-Request-Id"));
         putInMdc(MDC_TRACE_ID, traceIdFrom(req.getHeader("traceparent")));
         try {
@@ -61,14 +61,14 @@ public class RequestLogFilter extends OncePerRequestFilter {
             // Never log the body or the Authorization header: a token in a log
             // file is a stolen token, it just takes someone reading logs.
             log.info("{} {} -> {} ({} ms)", req.getMethod(), req.getRequestURI(),
-                    res.getStatus(), (System.nanoTime() - inicio) / 1_000_000);
+                    res.getStatus(), (System.nanoTime() - start) / 1_000_000);
             MDC.remove(MDC_REQUEST_ID);
             MDC.remove(MDC_TRACE_ID);
         }
     }
 
-    private void putInMdc(String key, String valor) {
-        if (valor != null && ID_VALIDO.matcher(valor).matches()) MDC.put(key, valor);
+    private void putInMdc(String key, String value) {
+        if (value != null && VALID_ID.matcher(value).matches()) MDC.put(key, value);
     }
 
     /** W3C Trace Context: `00-{traceId 32 hex}-{spanId 16 hex}-{flags}`. */

@@ -32,14 +32,14 @@ public class GatewayIdentityFilter extends OncePerRequestFilter {
     protected void doFilterInternal(@NonNull HttpServletRequest req,
                                     @NonNull HttpServletResponse res,
                                     @NonNull FilterChain chain) throws ServletException, IOException {
-        String tipo = req.getHeader(IdentityHeaders.PRINCIPAL_TYPE);
+        String principalType = req.getHeader(IdentityHeaders.PRINCIPAL_TYPE);
 
-        if ("user".equals(tipo)) {
-            autenticar(new GatewayPrincipal("user",
+        if ("user".equals(principalType)) {
+            authenticate(new GatewayPrincipal("user",
                             UUID.fromString(req.getHeader(IdentityHeaders.USER_ID)), null),
                     rolesFrom(req.getHeader(IdentityHeaders.USER_ROLES)));
-        } else if ("service".equals(tipo)) {
-            autenticar(new GatewayPrincipal("service", null,
+        } else if ("service".equals(principalType)) {
+            authenticate(new GatewayPrincipal("service", null,
                             req.getHeader(IdentityHeaders.SERVICE_ID)),
                     scopesFrom(req.getHeader(IdentityHeaders.SERVICE_SCOPES)));
         }
@@ -48,7 +48,7 @@ public class GatewayIdentityFilter extends OncePerRequestFilter {
         chain.doFilter(req, res);
     }
 
-    private void autenticar(GatewayPrincipal principal, List<GrantedAuthority> authorities) {
+    private void authenticate(GatewayPrincipal principal, List<GrantedAuthority> authorities) {
         var auth = UsernamePasswordAuthenticationToken.authenticated(principal, null, authorities);
         SecurityContextHolder.getContext().setAuthentication(auth);
     }

@@ -6,25 +6,25 @@ import org.springframework.boot.context.properties.bind.Name;
 import java.time.Duration;
 
 /**
- * DEC-42 - cuenta por e-mail. El gateway limita por IP; claves distintas, asi
- * que los dos no pueden dispararse por la misma condicion.
+ * DEC-42 - counted by e-mail. The gateway limits by IP; the keys differ, so the
+ * two limits cannot be triggered by the same condition.
  *
- * Tres presupuestos separados y NO intercambiables:
+ * Three separate, NON-interchangeable budgets:
  *
  * <ul>
- *   <li>{@code login-*}: fallos de credenciales. Se limpia al acertar.</li>
- *   <li>{@code reset-*}: pedidos de reset. Cuenta INTENTOS, no fallos: el
- *       endpoint es publico y responde lo mismo exista o no la cuenta, asi que
- *       no hay "acierto" que pueda limpiarlo.</li>
- *   <li>{@code twofactor-*}: desafios de 2FA emitidos. Frena que alguien que ya
- *       tiene la password inunde de mails al dueno de la cuenta.</li>
+ *   <li>{@code login-*}: credential failures. Cleared after a success.</li>
+ *   <li>{@code reset-*}: reset requests. Counts ATTEMPTS, not failures: the
+ *       endpoint is public and responds identically whether the account exists
+ *       or not, so there is no "success" that could clear it.</li>
+ *   <li>{@code twofactor-*}: issued 2FA challenges. Prevents someone who already
+ *       has the password from flooding the account owner's inbox.</li>
  * </ul>
  */
 @ConfigurationProperties(prefix = "users.ratelimit")
 public record RateLimitProperties(
-        @Name("login-max-failures") int loginMaxFallos,
-        @Name("login-window") Duration loginVentana,
-        @Name("reset-max-requests") int resetMaxPedidos,
-        @Name("reset-window") Duration resetVentana,
-        @Name("twofactor-max-challenges") int dosfaMaxDesafios,
-        @Name("twofactor-window") Duration dosfaVentana) { }
+        @Name("login-max-failures") int loginMaxFailures,
+        @Name("login-window") Duration loginWindow,
+        @Name("reset-max-requests") int resetMaxRequests,
+        @Name("reset-window") Duration resetWindow,
+        @Name("twofactor-max-challenges") int twoFactorMaxChallenges,
+        @Name("twofactor-window") Duration twoFactorWindow) { }

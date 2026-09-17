@@ -12,15 +12,15 @@ public final class ScopeCatalog {
     private ScopeCatalog() {
     }
 
-    public static boolean esEmitible(String scope) {
+    public static boolean isIssuable(String scope) {
         return ISSUABLE_SCOPES.containsKey(scope);
     }
 
-    public static String audienceDe(String scope) {
+    public static String audienceFor(String scope) {
         return ISSUABLE_SCOPES.get(scope);
     }
 
-    public static Set<String> emitibles() {
+    public static Set<String> issuableScopes() {
         return ISSUABLE_SCOPES.keySet();
     }
 }

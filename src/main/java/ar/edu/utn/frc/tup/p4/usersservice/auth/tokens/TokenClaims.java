@@ -42,7 +42,7 @@ public final class TokenClaims {
         this.jwtId = builder.jwtId;
     }
 
-    public static Builder paraPersona(
+    public static Builder forPerson(
             UUID subject,
             List<Role> roles,
             String sessionId,
@@ -58,7 +58,7 @@ public final class TokenClaims {
         return builder;
     }
 
-    public static Builder paraServicio(String clientId, String audience, Set<String> scopes) {
+    public static Builder forService(String clientId, String audience, Set<String> scopes) {
         Builder builder = new Builder("service", Objects.requireNonNull(clientId, "clientId"));
         builder.roles = List.of("MS");
         builder.audience = Objects.requireNonNull(audience, "audience");
@@ -69,7 +69,7 @@ public final class TokenClaims {
         return builder;
     }
 
-    public JWTClaimsSet aClaimsSet(String issuer, Duration lifetime) {
+    public JWTClaimsSet toClaimsSet(String issuer, Duration lifetime) {
         Instant issuedAt = Instant.now();
         JWTClaimsSet.Builder claims = new JWTClaimsSet.Builder()
                 .issuer(Objects.requireNonNull(issuer, "issuer"))
@@ -118,7 +118,7 @@ public final class TokenClaims {
             this.subject = subject;
         }
 
-        public Builder conOnBehalfOf(UUID actor) {
+        public Builder withOnBehalfOf(UUID actor) {
             if (!"service".equals(type)) {
                 throw new IllegalStateException("on_behalf_of only applies to service tokens");
             }
@@ -126,7 +126,7 @@ public final class TokenClaims {
             return this;
         }
 
-        public Builder conJti(String jwtId) {
+        public Builder withJti(String jwtId) {
             this.jwtId = Objects.requireNonNull(jwtId, "jwtId");
             return this;
         }

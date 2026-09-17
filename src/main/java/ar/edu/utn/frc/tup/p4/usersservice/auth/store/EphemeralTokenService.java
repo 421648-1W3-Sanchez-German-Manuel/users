@@ -8,11 +8,11 @@ import java.util.Optional;
  */
 public interface EphemeralTokenService {
 
-    void guardar(String key, String valor, Duration ttl);
+    void save(String key, String value, Duration ttl);
 
     /** Reads and deletes a token atomically. */
-    Optional<String> consumir(String key);
+    Optional<String> consume(String key);
 
     /** Reads a token without deleting it. */
-    Optional<String> verificar(String key);
+    Optional<String> find(String key);
 }

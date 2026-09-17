@@ -8,14 +8,15 @@ import org.springframework.stereotype.Component;
 import java.time.Duration;
 
 /**
- * Unico lugar que arma los Set-Cookie de sesion (spec "Sesion en Cookies",
- * S02.1). fu_rt usa Path=/api/users/ y no Path=/ porque una cookie admite un
- * solo valor de Path: es el prefijo mas angosto que cubre las dos rutas que
- * la consumen (/api/users/public/auth/refresh y /api/users/auth/logout).
+ * The only place that builds session Set-Cookie headers ("Cookie Sessions"
+ * specification, S02.1). fu_rt uses Path=/api/users/ rather than Path=/ because
+ * a cookie supports only one Path value: this is the narrowest prefix covering
+ * both routes that consume it (/api/users/public/auth/refresh and
+ * /api/users/auth/logout).
  *
- * El logout tiene que limpiar con el MISMO Path que se emite aca -ver
- * clearAccess()/clearRefresh()- o el navegador la interpreta como una cookie
- * distinta y la vieja queda viva, sin que el logout la haya tocado.
+ * Logout must clear the cookie with the SAME Path used when issuing it; see
+ * {@link #clearAccess()} and {@link #clearRefresh()}. Otherwise, the browser
+ * treats it as a different cookie and leaves the old one active.
  */
 @Component
 public class SessionCookieService {
@@ -41,7 +42,7 @@ public class SessionCookieService {
         return build(REFRESH_COOKIE, refreshJti, REFRESH_PATH, jwt.refreshTtl());
     }
 
-    /** Set-Cookie con Max-Age=0: instruye al navegador a borrarla ya. */
+    /** A Set-Cookie header with Max-Age=0 instructs the browser to delete it immediately. */
     public ResponseCookie clearAccess() {
         return build(ACCESS_COOKIE, "", ACCESS_PATH, Duration.ZERO);
     }

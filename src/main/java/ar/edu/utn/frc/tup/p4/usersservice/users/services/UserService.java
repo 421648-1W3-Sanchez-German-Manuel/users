@@ -20,22 +20,22 @@ import java.util.UUID;
 public class UserService {
 
     private final UserRepository repo;
-    private final CredentialService credenciales;
+    private final CredentialService credentials;
     private final PasswordEncoder encoder;
-    private final String tycVigente;
+    private final String currentTermsVersion;
 
-    public UserService(UserRepository repo, CredentialService credenciales,
+    public UserService(UserRepository repo, CredentialService credentials,
                        PasswordEncoder encoder,
-                       @Value("${users.legal.terms-version}") String tycVigente) {
+                       @Value("${users.legal.terms-version}") String currentTermsVersion) {
         this.repo = repo;
-        this.credenciales = credenciales;
+        this.credentials = credentials;
         this.encoder = encoder;
-        this.tycVigente = tycVigente;
+        this.currentTermsVersion = currentTermsVersion;
     }
 
     @Transactional(readOnly = true)
     public UserMeResponse me(UUID id) {
-        User u = buscar(id);
+        User u = find(id);
         return new UserMeResponse(u.getId().toString(), u.getFirstNames(), u.getLastNames(),
                 u.getLegajo(), u.getEmail(), u.getRole(), u.getAccountStatus(),
                 u.mustChangePassword(), u.isFirstLogin(), u.isGuidedTourCompleted(),
@@ -44,8 +44,8 @@ public class UserService {
     }
 
     @Transactional(readOnly = true)
-    public ProfileResponse perfil(UUID id) {
-        User u = buscar(id);
+    public ProfileResponse profile(UUID id) {
+        User u = find(id);
         return new ProfileResponse(u.getId().toString(), u.getFirstNames(), u.getLastNames(),
                 u.getGithubUsername(), u.getAvatarRef());
     }
@@ -56,12 +56,12 @@ public class UserService {
      * ADMIN or STUDENT records here.
      */
     @Transactional(readOnly = true)
-    public List<UserListItemResponse> listar(UUID actorId) {
-        boolean esGestor = buscar(actorId).getRole() == Role.GESTOR;
-        List<User> usuarios = esGestor
+    public List<UserListItemResponse> list(UUID actorId) {
+        boolean isManager = find(actorId).getRole() == Role.GESTOR;
+        List<User> users = isManager
                 ? repo.findByRoleInAndDeletedAtIsNullOrderByCreatedAtDesc(List.of(Role.PROFESSOR, Role.GESTOR))
                 : repo.findByDeletedAtIsNullOrderByCreatedAtDesc();
-        return usuarios.stream()
+        return users.stream()
                 .map(u -> new UserListItemResponse(u.getId().toString(), u.getFirstNames(),
                         u.getLastNames(), u.getLegajo(), u.getEmail(), u.getRole(),
                         u.getAccountStatus(), u.getCreatedAt()))
@@ -71,7 +71,7 @@ public class UserService {
     /** DEC-30 - avatarRef may be null while object storage is out of this sprint. */
     @Transactional
     public void completeOnboarding(UUID id, String githubUsername, String avatarRef, boolean tourOk) {
-        User u = buscar(id);
+        User u = find(id);
         u.completeOnboarding(githubUsername, avatarRef, tourOk);
         repo.save(u);
     }
@@ -81,29 +81,29 @@ public class UserService {
      * (password again + 2FA) belongs to auth/, the business rules to users/.
      */
     @Transactional
-    public void deactivate(UUID actorId, UUID objetivoId, AdminDeactivationRequest req) {
-        User objetivo = buscar(objetivoId);
+    public void deactivate(UUID actorId, UUID targetId, AdminDeactivationRequest req) {
+        User target = find(targetId);
 
-        // A GESTOR manages PROFESSOR and GESTOR accounts only — never ADMIN or STUDENT.
-        if (buscar(actorId).getRole() == Role.GESTOR
-                && objetivo.getRole() != Role.PROFESSOR && objetivo.getRole() != Role.GESTOR) {
+        // A GESTOR manages PROFESSOR and GESTOR accounts only - never ADMIN or STUDENT.
+        if (find(actorId).getRole() == Role.GESTOR
+                && target.getRole() != Role.PROFESSOR && target.getRole() != Role.GESTOR) {
             throw ApiException.accessDenied();
         }
 
-        if (buscar(actorId).getRole() == Role.GESTOR && actorId.equals(objetivoId)) {
-            throw ApiException.validation("Un GESTOR no puede darse de baja a si mismo.");
+        if (find(actorId).getRole() == Role.GESTOR && actorId.equals(targetId)) {
+            throw ApiException.validation("A GESTOR cannot deactivate their own account.");
         }
 
-        if (objetivo.getRole() == Role.ADMIN) {
-            if (actorId.equals(objetivoId)) {
-                throw ApiException.validation("Un ADMIN no puede darse de baja a si mismo.");
+        if (target.getRole() == Role.ADMIN) {
+            if (actorId.equals(targetId)) {
+                throw ApiException.validation("An ADMIN cannot deactivate their own account.");
             }
             // RF-ROL-06 / DEC-11: written confirmation, not just a button.
-            if (!objetivo.getEmail().equalsIgnoreCase(req.usernameConfirmation())) {
+            if (!target.getEmail().equalsIgnoreCase(req.usernameConfirmation())) {
                 throw ApiException.validation(
-                        "Escribi el username exacto del ADMIN que vas a dar de baja para confirmar.");
+                        "Enter the exact username of the ADMIN you are deactivating to confirm.");
             }
-            if (!credenciales.verifyPasswordOf(actorId, req.password())) {
+            if (!credentials.verifyPasswordOf(actorId, req.password())) {
                 throw ApiException.invalidCredentials();
             }
 
@@ -111,48 +111,48 @@ public class UserService {
             if (repo.countActiveWithLock(Role.ADMIN) <= 1) throw ApiException.lastAdmin();
         }
 
-        objetivo.deactivate();
-        repo.save(objetivo);
+        target.deactivate();
+        repo.save(target);
     }
 
     @Transactional
-    public void changeRole(UUID actorId, UUID objetivoId, Role nuevo) {
-        User objetivo = buscar(objetivoId);
+    public void changeRole(UUID actorId, UUID targetId, Role newRole) {
+        User target = find(targetId);
 
         // A GESTOR can only move PROFESSOR/GESTOR accounts between those two
         // roles: it can neither touch an existing ADMIN or STUDENT, nor grant
         // ADMIN or STUDENT.
-        boolean fueraDeAlcance = (objetivo.getRole() != Role.PROFESSOR && objetivo.getRole() != Role.GESTOR)
-                || (nuevo != Role.PROFESSOR && nuevo != Role.GESTOR);
-        if (buscar(actorId).getRole() == Role.GESTOR && fueraDeAlcance) {
+        boolean outOfScope = (target.getRole() != Role.PROFESSOR && target.getRole() != Role.GESTOR)
+                || (newRole != Role.PROFESSOR && newRole != Role.GESTOR);
+        if (find(actorId).getRole() == Role.GESTOR && outOfScope) {
             throw ApiException.accessDenied();
         }
 
-        if (buscar(actorId).getRole() == Role.GESTOR && actorId.equals(objetivoId)) {
-            throw ApiException.validation("Un GESTOR no puede cambiarse el rol a si mismo.");
+        if (find(actorId).getRole() == Role.GESTOR && actorId.equals(targetId)) {
+            throw ApiException.validation("A GESTOR cannot change their own role.");
         }
 
-        if (objetivo.getRole() == Role.ADMIN && nuevo != Role.ADMIN
+        if (target.getRole() == Role.ADMIN && newRole != Role.ADMIN
                 && repo.countActiveWithLock(Role.ADMIN) <= 1) {
             throw ApiException.lastAdmin();
         }
-        objetivo.changeRole(nuevo);
-        repo.save(objetivo);
+        target.changeRole(newRole);
+        repo.save(target);
     }
 
-    /** RF-ROL-03 - este alta manual es solo para ADMIN; ver DTO. */
+    /** RF-ROL-03 - this manual registration is for ADMIN only; see the DTO. */
     @Transactional
-    public UUID crear(String firstNames, String lastNames, String email, String password) {
+    public UUID create(String firstNames, String lastNames, String email, String password) {
         PasswordPolicy.validate(password);
-        String normalizado = email.toLowerCase(Locale.ROOT);
-        if (repo.findByEmailAndDeletedAtIsNull(normalizado).isPresent()) throw ApiException.duplicateEmail();
+        String normalized = email.toLowerCase(Locale.ROOT);
+        if (repo.findByEmailAndDeletedAtIsNull(normalized).isPresent()) throw ApiException.duplicateEmail();
 
-        User u = User.createAdmin(firstNames, lastNames, normalizado, encoder.encode(password), tycVigente);
+        User u = User.createAdmin(firstNames, lastNames, normalized, encoder.encode(password), currentTermsVersion);
         repo.saveAndFlush(u);
         return u.getId();
     }
 
-    private User buscar(UUID id) {
+    private User find(UUID id) {
         return repo.findByIdAndDeletedAtIsNull(id).orElseThrow(ApiException::accessDenied);
     }
 }

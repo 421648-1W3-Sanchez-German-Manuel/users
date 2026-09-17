@@ -36,9 +36,9 @@ class CredentialServiceTest {
     @Test
     void valid_credentials_return_the_user_data() {
         when(repo.findByEmailAndDeletedAtIsNull("ana@utn.edu.ar"))
-                .thenReturn(Optional.of(active("passwordvalida1")));
+                .thenReturn(Optional.of(active("validpassword1")));
 
-        var r = service.verifyCredentials("ana@utn.edu.ar", "passwordvalida1");
+        var r = service.verifyCredentials("ana@utn.edu.ar", "validpassword1");
 
         assertThat(r).isNotNull();
         assertThat(r.roles()).containsExactly(Role.STUDENT);
@@ -49,29 +49,29 @@ class CredentialServiceTest {
     @Test
     void a_wrong_password_returns_null() {
         when(repo.findByEmailAndDeletedAtIsNull(any()))
-                .thenReturn(Optional.of(active("passwordvalida1")));
-        assertThat(service.verifyCredentials("ana@utn.edu.ar", "otracosa1234")).isNull();
+                .thenReturn(Optional.of(active("validpassword1")));
+        assertThat(service.verifyCredentials("ana@utn.edu.ar", "somethingelse1234")).isNull();
     }
 
     @Test
     void an_unknown_email_returns_null_just_like_a_wrong_password() {
         // Anti-enumeration: the caller cannot tell the two cases apart.
         when(repo.findByEmailAndDeletedAtIsNull(any())).thenReturn(Optional.empty());
-        assertThat(service.verifyCredentials("nadie@utn.edu.ar", "loquesea1234")).isNull();
+        assertThat(service.verifyCredentials("nobody@utn.edu.ar", "anything1234")).isNull();
     }
 
     @Test
     void the_email_is_looked_up_lowercased() {
         when(repo.findByEmailAndDeletedAtIsNull("ana@utn.edu.ar"))
-                .thenReturn(Optional.of(active("passwordvalida1")));
-        assertThat(service.verifyCredentials("ANA@UTN.EDU.AR", "passwordvalida1")).isNotNull();
+                .thenReturn(Optional.of(active("validpassword1")));
+        assertThat(service.verifyCredentials("ANA@UTN.EDU.AR", "validpassword1")).isNotNull();
     }
 
     @Test
     void the_hash_never_leaves_the_call() {
         when(repo.findByEmailAndDeletedAtIsNull(any()))
-                .thenReturn(Optional.of(active("passwordvalida1")));
-        var r = service.verifyCredentials("ana@utn.edu.ar", "passwordvalida1");
+                .thenReturn(Optional.of(active("validpassword1")));
+        var r = service.verifyCredentials("ana@utn.edu.ar", "validpassword1");
         assertThat(r.toString()).doesNotContain("$2a$");
     }
 }

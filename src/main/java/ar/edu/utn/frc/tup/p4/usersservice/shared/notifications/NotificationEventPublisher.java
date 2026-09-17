@@ -39,7 +39,7 @@ public class NotificationEventPublisher {
 
     @Transactional(propagation = Propagation.MANDATORY)
     public void send(EmailType type, UUID userId, String to, Map<String, Object> variables) {
-        var mail = templates.render(type, variables);
+        var renderedEmail = templates.render(type, variables);
         outbox.publish(
                 topics.notificationEvents(),
                 userId.toString(),
@@ -47,6 +47,6 @@ public class NotificationEventPublisher {
                 1,
                 "user",
                 userId,
-                new EmailPayload(to, mail.asunto(), mail.html()));
+                new EmailPayload(to, renderedEmail.subject(), renderedEmail.html()));
     }
 }

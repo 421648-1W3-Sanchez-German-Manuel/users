@@ -27,22 +27,22 @@ public class CourseValidationListener {
 
     private final ObjectMapper mapper;
     private final UserRepository repo;
-    private final ProcessedEventRepository procesados;
+    private final ProcessedEventRepository processedEvents;
     private final NotificationEventPublisher mails;
     private final CourseValidationContractProperties contract;
 
     public CourseValidationListener(ObjectMapper mapper, UserRepository repo,
-                                   ProcessedEventRepository procesados,
+                                   ProcessedEventRepository processedEvents,
                                    NotificationEventPublisher mails,
                                    CourseValidationContractProperties contract) {
         this.mapper = mapper; this.repo = repo;
-        this.procesados = procesados; this.mails = mails;
+        this.processedEvents = processedEvents; this.mails = mails;
         this.contract = contract;
     }
 
     @KafkaListener(topics = "${users.kafka.topics.course-events}")
     @Transactional
-    public void consumir(String message) {
+    public void consume(String message) {
         EventEnvelope<JsonNode> envelope;
         try {
             envelope = mapper.readValue(
@@ -103,22 +103,22 @@ public class CourseValidationListener {
             return;
         }
 
-        // DEC-13 - idempotency: INSERT and catch the duplicate. NOT a SELECT
-        // previo: bajo REPEATABLE READ (DEC-20 r5) dos consumers concurrentes
+        // DEC-13 - idempotency: INSERT and catch the duplicate. NOT a prior
+        // SELECT: under REPEATABLE READ (DEC-20 r5), two concurrent consumers
         // with the same eventId can BOTH see the row missing.
         try {
-            procesados.saveAndFlush(
+            processedEvents.saveAndFlush(
                     new ProcessedEvent(envelope.eventId().toString(), envelope.eventType()));
-        } catch (DataIntegrityViolationException yaProcesado) {
+        } catch (DataIntegrityViolationException alreadyProcessed) {
             log.debug("KAFKA_EVENT_DUPLICATE eventId={}", envelope.eventId());
             return;
         }
 
         // DEC-09: result and courseId are used and then discarded.
-        // Cursos owns that data; duplicating it would be a second source of
+        // Courses owns that data; duplicating it would be a second source of
         // truth for the same fact.
         repo.findByIdAndDeletedAtIsNull(userId).ifPresent(u -> {
-            u.activateAfterCourseValidation();   // no-op si ya estaba ACTIVE
+            u.activateAfterCourseValidation();   // No-op if already ACTIVE.
             repo.save(u);
             mails.send(EmailType.WHITELISTING_RESOLVED, u.getId(), u.getEmail(),
                     Map.of("firstNames", u.getFirstNames()));

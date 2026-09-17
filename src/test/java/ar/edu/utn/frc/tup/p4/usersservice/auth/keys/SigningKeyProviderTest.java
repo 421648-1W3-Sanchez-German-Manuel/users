@@ -26,17 +26,17 @@ class SigningKeyProviderTest {
     static Path jwksDir;
 
     /**
-     * Las claves se generan con la JDK, NO invocando `openssl`.
+     * The keys are generated with the JDK, NOT by invoking `openssl`.
      *
-     * Con ProcessBuilder esto fallaba con "CreateProcess error=2" en cualquier
-     * Windows sin openssl en el PATH — y openssl no esta en el PATH de Windows
-     * por defecto, viene con Git pero en su propio bin. Un test unitario que
-     * depende de un binario externo no prueba el codigo, prueba la maquina.
+     * With ProcessBuilder this failed with "CreateProcess error=2" on any
+     * Windows system without openssl on the PATH. Openssl is not on the Windows
+     * PATH by default; it comes with Git but in its own bin directory. A unit
+     * test that depends on an external binary tests the machine, not the code.
      *
-     * El formato es el mismo que escribe openssl y el mismo que espera
-     * `JWK.parseFromPEMEncodedObjects`: getEncoded() de una clave privada da
-     * PKCS#8 y de una publica da SPKI, que son exactamente los dos PEM
-     * estandar.
+     * The format is the same one openssl writes and
+     * `JWK.parseFromPEMEncodedObjects` expects: getEncoded() returns PKCS#8 for
+     * a private key and SPKI for a public key, exactly the two standard PEM
+     * formats.
      */
     @BeforeAll
     static void generateKeys() throws Exception {
@@ -47,9 +47,8 @@ class SigningKeyProviderTest {
         writePem(privateKey, "PRIVATE KEY", active.getPrivate().getEncoded());
         writePem(jwksDir.resolve("2026-09.pem"), "PUBLIC KEY", active.getPublic().getEncoded());
 
-        // Una segunda clave, solo publica: es la que ya no firma pero sigue
-        // publicada en el JWKS para que los tokens en vuelo sigan validando
-        // durante una rotacion (DEC-18).
+        // A second, public-only key no longer signs but remains published in
+        // the JWKS so in-flight tokens remain valid during rotation (DEC-18).
         KeyPair rotated = rsa();
         writePem(dir.resolve("old.pem"), "PRIVATE KEY", rotated.getPrivate().getEncoded());
         writePem(jwksDir.resolve("2026-03.pem"), "PUBLIC KEY", rotated.getPublic().getEncoded());
@@ -78,15 +77,15 @@ class SigningKeyProviderTest {
     void signsWithTheActiveKid() {
         var provider = new FileSystemSigningKeyProvider(properties(privateKey.toString(), "2026-09"));
 
-        assertThat(provider.claveDeFirma().getKeyID()).isEqualTo("2026-09");
-        assertThat(provider.claveDeFirma().isPrivate()).isTrue();
+        assertThat(provider.signingKey().getKeyID()).isEqualTo("2026-09");
+        assertThat(provider.signingKey().isPrivate()).isTrue();
     }
 
     @Test
     void jwksPublishesEveryPublicKeyInTheDirectory() {
         var provider = new FileSystemSigningKeyProvider(properties(privateKey.toString(), "2026-09"));
 
-        assertThat(provider.jwksPublico().getKeys()).extracting(key -> key.getKeyID())
+        assertThat(provider.publicJwks().getKeys()).extracting(key -> key.getKeyID())
                 .containsExactlyInAnyOrder("2026-09", "2026-03");
     }
 
@@ -94,7 +93,7 @@ class SigningKeyProviderTest {
     void jwksDoesNotExposePrivateKeys() {
         var provider = new FileSystemSigningKeyProvider(properties(privateKey.toString(), "2026-09"));
 
-        assertThat(provider.jwksPublico().getKeys()).allMatch(key -> !key.isPrivate());
+        assertThat(provider.publicJwks().getKeys()).allMatch(key -> !key.isPrivate());
     }
 
     @Test

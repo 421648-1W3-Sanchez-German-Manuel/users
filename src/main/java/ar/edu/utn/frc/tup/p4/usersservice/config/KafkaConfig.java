@@ -20,9 +20,9 @@ import java.util.Map;
  *
  * The factory is built here rather than tweaking the auto-configured one so
  * that `users.kafka.listener-auto-startup` can gate container startup: the
- * integration suite has no broker and calls `consumir` directly, so it sets the
- * flag to false to keep the container from looping on a refused connection. In
- * production the property is absent and defaults to true.
+ * integration suite has no broker and invokes the listener directly, so it sets
+ * the flag to false to keep the container from looping on a refused connection.
+ * In production the property is absent and defaults to true.
  */
 @Configuration
 @EnableKafka
