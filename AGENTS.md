@@ -82,6 +82,13 @@ token, it just takes someone reading logs.
 data change, and dispatched by a poller. Publishing to the broker from inside
 the transaction means a broker outage takes every write down with it.
 
+**9 · Everything is written in English, except anything shown to the user.**
+Code, identifiers, comments, commit messages, PR/issue text and docs are all in
+English. The only exception is user-facing text — UI copy, user-facing error or
+validation messages, emails — which stays in the product's target language. When
+in doubt whether a string is user-facing, treat it as internal and write it in
+English.
+
 ## Kafka is a boundary, not ours
 
 The broker is shared infrastructure. Topics and payload schemas are a **contract
