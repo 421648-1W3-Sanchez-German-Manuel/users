@@ -14,9 +14,8 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * DEC-30 - the test that keeps EVERY new user from being locked in a 403.
- * Without object storage there is no upload endpoint; if avatarRef were
- * mandatory, the ONBOARDING gate could never be closed.
+ * DEC-GL-05 escape + DEC-GL-11: with GitHub disabled (default), the tour alone
+ * closes gate 3. avatarRef is no longer part of the onboarding body (DEC-GL-21).
  */
 class OnboardingWithoutAvatarIT extends AbstractIntegrationTest {
 
@@ -30,23 +29,17 @@ class OnboardingWithoutAvatarIT extends AbstractIntegrationTest {
     }
 
     @Test
-    void onboarding_WITHOUT_avatarRef_closes_gate_3() {
+    void onboarding_tour_alone_closes_gate_3_when_github_is_disabled() {
         UUID id = activeUserId();
         assertThat(users.me(id).firstLogin()).isTrue();
 
-        users.completeOnboarding(id, "anaperez", null, true);
+        users.completeOnboarding(id, true);
 
         var me = users.me(id);
         assertThat(me.firstLogin()).isFalse();
         assertThat(me.avatarRef()).isNull();
         assertThat(me.guidedTourCompleted()).isTrue();
-    }
-
-    @Test
-    void avatarRef_is_stored_when_provided() {
-        UUID id = activeUserId();
-        users.completeOnboarding(id, "anaperez", "avatars/ana.png", true);
-        assertThat(users.me(id).avatarRef()).isEqualTo("avatars/ana.png");
+        assertThat(me.githubUsername()).isNull();
     }
 
     @Test

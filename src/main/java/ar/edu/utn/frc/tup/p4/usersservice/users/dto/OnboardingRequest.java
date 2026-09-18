@@ -1,6 +1,6 @@
 package ar.edu.utn.frc.tup.p4.usersservice.users.dto;
 
-import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.AssertTrue;
 
-/** DEC-30 - avatarRef is OPTIONAL: no @NotBlank. */
-public record OnboardingRequest(@NotBlank String githubUsername, String avatarRef, boolean tourOk) { }
+/** DEC-GL-11: onboarding body is only the tour confirmation. */
+public record OnboardingRequest(@AssertTrue boolean tourOk) { }

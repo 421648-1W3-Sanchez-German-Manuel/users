@@ -23,14 +23,17 @@ public class UserService {
     private final CredentialService credentials;
     private final PasswordEncoder encoder;
     private final String currentTermsVersion;
+    private final GitProviderLinkService gitLinks;
 
     public UserService(UserRepository repo, CredentialService credentials,
                        PasswordEncoder encoder,
-                       @Value("${users.legal.terms-version}") String currentTermsVersion) {
+                       @Value("${users.legal.terms-version}") String currentTermsVersion,
+                       GitProviderLinkService gitLinks) {
         this.repo = repo;
         this.credentials = credentials;
         this.encoder = encoder;
         this.currentTermsVersion = currentTermsVersion;
+        this.gitLinks = gitLinks;
     }
 
     @Transactional(readOnly = true)
@@ -68,11 +71,15 @@ public class UserService {
                 .toList();
     }
 
-    /** DEC-30 - avatarRef may be null while object storage is out of this sprint. */
+    /**
+     * DEC-GL-11: marks the guided tour only. first_login is cleared by
+     * closeOnboardingIfReady (DEC-GL-14) when the account is ready.
+     */
     @Transactional
-    public void completeOnboarding(UUID id, String githubUsername, String avatarRef, boolean tourOk) {
+    public void completeOnboarding(UUID id, boolean tourOk) {
         User u = find(id);
-        u.completeOnboarding(githubUsername, avatarRef, tourOk);
+        u.completeOnboarding(tourOk);
+        gitLinks.closeOnboardingIfReady(u);
         repo.save(u);
     }
 
@@ -111,6 +118,8 @@ public class UserService {
             if (repo.countActiveWithLock(Role.ADMIN) <= 1) throw ApiException.lastAdmin();
         }
 
+        // DEC-GL-17: free the provider accounts before the row is deactivated.
+        gitLinks.unlinkAllActive(targetId);
         target.deactivate();
         repo.save(target);
     }

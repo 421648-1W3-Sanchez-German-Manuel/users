@@ -24,7 +24,9 @@ class ProfileIT extends AbstractIntegrationTest {
         User u = User.create("Ana", "Perez", "profile-" + java.util.UUID.randomUUID() + "@utn.edu.ar", "$2a$12$h", Role.STUDENT, "v1");
         u.setLegajo("76543");
         u.forceStatusForTest(AccountStatus.ACTIVE);
-        u.completeOnboarding("anaperez", "avatars/a.png", true);
+        u.completeOnboarding(true);
+        u.clearFirstLogin();
+        u.mirrorGithubUsername("anaperez");
         repo.saveAndFlush(u);
 
         var profile = users.profile(u.getId());
@@ -41,7 +43,9 @@ class ProfileIT extends AbstractIntegrationTest {
     void github_contains_only_the_handle_and_never_a_URL() {
         User u = User.create("B", "Q", "gh-" + UUID.randomUUID() + "@utn.edu.ar", "$2a$12$h", Role.STUDENT, "v1");
         u.forceStatusForTest(AccountStatus.ACTIVE);
-        u.completeOnboarding("bq", null, true);
+        u.completeOnboarding(true);
+        u.clearFirstLogin();
+        u.mirrorGithubUsername("bq");
         repo.saveAndFlush(u);
         assertThat(users.profile(u.getId()).githubUsername()).doesNotContain("http");
     }
