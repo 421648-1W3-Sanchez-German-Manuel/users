@@ -128,12 +128,15 @@ public class UserController {
                description = """
                         LOGICAL deactivation: nothing is physically deleted (non-negotiable 6).
 
-                        Deactivating an **ADMIN** requires complete reauthentication in the body
-                        (`RF-ROL-06`, SPEC §16.3): the current password, a FRESH 2FA code, and the
-                        target's username typed by hand. That code is the one the screen requests
-                        immediately before, and it is single-use. For any other target the three
-                        fields are still required by the schema — the screen is one — but only the
-                        role rules below apply.
+                        Requires complete reauthentication in the body, **whatever the target's
+                        role** (`RF-ROL-06`, SPEC §16.3): the current password, a FRESH 2FA code,
+                        and the target's username typed by hand. The code is the one the screen
+                        requests immediately before, and it is single-use — one challenge buys
+                        exactly one deactivation.
+
+                        The reinforcement is about who is ASKING, so it does not depend on the
+                        target: a stolen session deactivating fifty STUDENT accounts is not a
+                        smaller incident than one deactivating a single ADMIN.
 
                         Two distinct defensive layers: the annotation checks the role, and the
                         service checks whether the operation would leave the platform without an

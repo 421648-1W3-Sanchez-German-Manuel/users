@@ -1499,6 +1499,27 @@ public record BajaReforzadaRequest(
 
 Las dos capas son **responsabilidades distintas en módulos distintos**, y ambas son bloqueantes: `auth/` valida que quien pide la baja es realmente ese ADMIN (no alguien con su sesión abierta); `users/` valida que la baja no rompa la plataforma.
 
+**Alcance · el paso 1 corre para CUALQUIER objetivo, no solo ADMIN.** Esta
+sección se escribió como "baja reforzada de ADMIN" y durante un tiempo el
+código solo reforzaba cuando el objetivo era ADMIN. Se corrigió: el paso 1
+protege contra una **sesión robada**, y eso no depende de a quién se esté dando
+de baja — una sesión robada bajando cincuenta cuentas STUDENT no es un
+incidente menor que una bajando un solo ADMIN. La baja es lógica, pero cada una
+de esas personas queda afuera hasta que alguien lo note.
+
+Lo que sí sigue dependiendo del rol del objetivo es el **paso 2**: el lock de
+último ADMIN es una regla sobre la integridad de la plataforma, no sobre la
+identidad de quien pide.
+
+La pantalla (`user-delete`) ya hacía los tres pasos para cualquier objetivo y
+ya recolectaba un código real, así que ampliar el alcance no cambió nada del
+front: solo hizo que el servicio validara lo que la UI venía mandando.
+
+**Y el `twoFactorCode` efectivamente se verifica.** Estuvo declarado
+`@NotBlank` en el request desde el principio sin que nada lo leyera: cualquier
+cadena de seis caracteres pasaba. Si se vuelve a tocar este método, el test que
+lo cubre es `AdminRulesIT.deactivation_requires_a_valid_second_factor`.
+
 ### 16.4 Recuperación de ADMIN · `RF-ROL-04` · **DEC-11**
 
 **Comando CLI, sin endpoint HTTP.** No hay UI. `AdminRecoveryCommand` en `auth/cli/`.

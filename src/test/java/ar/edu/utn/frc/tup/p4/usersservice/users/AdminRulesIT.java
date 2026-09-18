@@ -38,7 +38,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  * them. If a class needs its rows to survive another class, it will not work:
  * do not depend on execution order.
  */
-@Import(TestOtpSpy.Config.class)   // deactivating an ADMIN needs a REAL second factor
+@Import(TestOtpSpy.Config.class)   // every deactivation needs a REAL second factor
 class AdminRulesIT extends AbstractIntegrationTest {
 
     @Autowired UserService users;
@@ -62,10 +62,10 @@ class AdminRulesIT extends AbstractIntegrationTest {
     }
 
     /**
-     * A request that does NOT carry a usable second factor. Good enough for
-     * every case that is rejected before reaching it (role scope, self-target,
-     * written confirmation) and for non-ADMIN targets, where SPEC §16.3 does
-     * not apply.
+     * A request that does NOT carry a usable second factor. Only good for the
+     * cases rejected BEFORE the code is checked (role scope, self-target,
+     * written confirmation) and for proving that a made-up code is refused.
+     * Anything that is meant to succeed has to use {@link #reinforced}.
      */
     private AdminDeactivationRequest confirmation(String username) {
         return new AdminDeactivationRequest("validpassword1", "123456", username);
@@ -112,7 +112,7 @@ class AdminRulesIT extends AbstractIntegrationTest {
     }
 
     @Test
-    void ADMIN_deactivation_requires_a_valid_second_factor() {
+    void deactivation_requires_a_valid_second_factor() {
         User actor = admin("2fa-actor@utn.edu.ar");
         User target = admin("2fa-target@utn.edu.ar");
 
@@ -125,6 +125,45 @@ class AdminRulesIT extends AbstractIntegrationTest {
 
         assertThat(repo.findById(target.getId()))
                 .get().extracting(User::getAccountStatus).isNotEqualTo(AccountStatus.DEACTIVATED);
+    }
+
+    /**
+     * The reinforcement is about WHO IS ASKING, so it does not depend on the
+     * target's role. It used to run only when the target was an ADMIN, which
+     * left every STUDENT, PROFESSOR and GESTOR account deactivatable with a
+     * session and nothing else.
+     */
+    @Test
+    void a_NON_ADMIN_target_also_requires_the_reinforced_confirmation() {
+        User manager = withRole(Role.GESTOR, "weak-manager@utn.edu.ar");
+        User professor = withRole(Role.PROFESSOR, "weak-target@utn.edu.ar");
+
+        // Made-up code, everything else right.
+        assertThatThrownBy(() -> users.deactivate(manager.getId(), professor.getId(),
+                confirmation("weak-target@utn.edu.ar")))
+                .isInstanceOf(ApiException.class);
+
+        // Wrong password, real code.
+        assertThatThrownBy(() -> {
+            AdminDeactivationRequest good = reinforced(manager, "weak-target@utn.edu.ar");
+            users.deactivate(manager.getId(), professor.getId(),
+                    new AdminDeactivationRequest("not-the-password", good.twoFactorCode(),
+                            "weak-target@utn.edu.ar"));
+        }).isInstanceOf(ApiException.class);
+
+        // Wrong written confirmation.
+        assertThatThrownBy(() -> users.deactivate(manager.getId(), professor.getId(),
+                reinforced(manager, "someone-else@utn.edu.ar")))
+                .isInstanceOf(ApiException.class);
+
+        assertThat(repo.findById(professor.getId()))
+                .get().extracting(User::getAccountStatus).isNotEqualTo(AccountStatus.DEACTIVATED);
+
+        // And with all three right, it goes through.
+        users.deactivate(manager.getId(), professor.getId(),
+                reinforced(manager, "weak-target@utn.edu.ar"));
+        assertThat(repo.findById(professor.getId()))
+                .get().extracting(User::getAccountStatus).isEqualTo(AccountStatus.DEACTIVATED);
     }
 
     @Test
@@ -154,7 +193,7 @@ class AdminRulesIT extends AbstractIntegrationTest {
         tokens.saveSession(target.getId(), "sid-still-open");
 
         users.deactivate(manager.getId(), target.getId(),
-                new AdminDeactivationRequest("na", "na", "na"));
+                reinforced(manager, target.getEmail()));
 
         // DEC-22. Without this the person keeps the access token they already
         // hold for up to a full access-ttl: the gateway reads `est` from the
@@ -168,7 +207,7 @@ class AdminRulesIT extends AbstractIntegrationTest {
         User target = withRole(Role.PROFESSOR, "event-target@utn.edu.ar");
 
         users.deactivate(manager.getId(), target.getId(),
-                new AdminDeactivationRequest("na", "na", "na"));
+                reinforced(manager, target.getEmail()));
 
         OutboxEvent event = outbox.findAll().stream()
                 .filter(e -> target.getId().equals(e.getAggregateId()))
@@ -274,8 +313,11 @@ class AdminRulesIT extends AbstractIntegrationTest {
         User professor = withRole(Role.PROFESSOR, "target-deactivate-prof@utn.edu.ar");
         User otherManager = withRole(Role.GESTOR, "target-deactivate-manager@utn.edu.ar");
 
-        users.deactivate(manager.getId(), professor.getId(), new AdminDeactivationRequest("na", "na", "na"));
-        users.deactivate(manager.getId(), otherManager.getId(), new AdminDeactivationRequest("na", "na", "na"));
+        // One challenge per deactivation: the code is single-use.
+        users.deactivate(manager.getId(), professor.getId(),
+                reinforced(manager, professor.getEmail()));
+        users.deactivate(manager.getId(), otherManager.getId(),
+                reinforced(manager, otherManager.getEmail()));
 
         assertThat(repo.findById(professor.getId()))
                 .get().extracting(User::getAccountStatus).isEqualTo(AccountStatus.DEACTIVATED);

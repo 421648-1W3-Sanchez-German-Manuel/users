@@ -110,15 +110,25 @@ public class UserService {
      * It crosses both modules with NO network in between: the reinforced confirmation
      * (password again + 2FA) belongs to auth/, the business rules to users/.
      *
-     * <p>SPEC §16.3 scopes the reinforcement to deactivating an ADMIN, which is
-     * why it lives inside that branch. The request carries the three fields for
-     * every target because the screen is one, but for a non-ADMIN target only
-     * the role rules apply.
+     * <p>SPEC §16.3 writes the reinforcement under "baja reforzada de ADMIN",
+     * and it used to be applied only when the TARGET was an ADMIN. It applies
+     * to every target now. What the reinforcement protects against is a stolen
+     * session, and a stolen session deactivating fifty STUDENT accounts is not
+     * a smaller incident than one deactivating a single ADMIN — the deletion is
+     * logical, but every one of those people is locked out until somebody
+     * notices. The target's role changes what is at stake for the PLATFORM
+     * (hence the last-ADMIN lock, which stays ADMIN-only); it does not change
+     * how sure we have to be about WHO is asking.
+     *
+     * <p>It costs nothing to widen: the screen already ran the three-step flow
+     * for every target and already collected a real code, so this only makes
+     * the service check what the UI was always sending.
      *
      * <p>The second factor is verified HERE and not in a filter: the code is
      * single-use, so consuming it has to happen in the same transaction that
      * performs the deactivation. Verifying it earlier would burn the code on a
-     * request that then fails a business rule.
+     * request that then fails a business rule — which is also why it goes after
+     * the role and confirmation checks and before the last-ADMIN lock.
      */
     @Transactional
     public void deactivate(UUID actorId, UUID targetId, AdminDeactivationRequest req) {
@@ -134,33 +144,36 @@ public class UserService {
             throw ApiException.validation("A GESTOR cannot deactivate their own account.");
         }
 
-        if (target.getRole() == Role.ADMIN) {
-            if (actorId.equals(targetId)) {
-                throw ApiException.validation("An ADMIN cannot deactivate their own account.");
-            }
-            // RF-ROL-06 / DEC-11: written confirmation, not just a button.
-            if (!target.getEmail().equalsIgnoreCase(req.usernameConfirmation())) {
-                throw ApiException.validation(
-                        "Enter the exact username of the ADMIN you are deactivating to confirm.");
-            }
-            if (!credentials.verifyPasswordOf(actorId, req.password())) {
-                throw ApiException.invalidCredentials();
-            }
+        if (target.getRole() == Role.ADMIN && actorId.equals(targetId)) {
+            throw ApiException.validation("An ADMIN cannot deactivate their own account.");
+        }
 
-            // RF-ROL-06 step 1, second half. The password alone proves nothing
-            // that a stolen session does not already have: the whole point of
-            // the second factor here is that whoever is asking still holds the
-            // ADMIN's mailbox. The challenge is the one the screen triggers
-            // right before this call, through the normal login endpoint.
-            //
-            // The field was in the DTO from day one, @NotBlank, and nothing
-            // ever read it: any six characters passed. The screen collected a
-            // real code and even handled `invalid-code`, an error this service
-            // could not return.
-            secondFactor.verify(actorId, req.twoFactorCode());
+        // ---- RF-ROL-06 step 1: reinforced identity. EVERY target. ----------
+        // RF-ROL-06 / DEC-11: written confirmation, not just a button.
+        if (!target.getEmail().equalsIgnoreCase(req.usernameConfirmation())) {
+            throw ApiException.validation(
+                    "Enter the exact username of the account you are deactivating to confirm.");
+        }
+        if (!credentials.verifyPasswordOf(actorId, req.password())) {
+            throw ApiException.invalidCredentials();
+        }
 
-            // DEC-20 rule 5: the count goes WITH A LOCK, in this same transaction.
-            if (repo.countActiveWithLock(Role.ADMIN) <= 1) throw ApiException.lastAdmin();
+        // The password alone proves nothing that a stolen session does not
+        // already have: the point of the second factor is that whoever is
+        // asking still holds the operator's mailbox. The challenge is the one
+        // the screen triggers right before this call, through the normal login
+        // endpoint.
+        //
+        // The field was in the DTO from day one, @NotBlank, and nothing ever
+        // read it: any six characters passed. The screen collected a real code
+        // and even handled `invalid-code`, an error this service could not
+        // return.
+        secondFactor.verify(actorId, req.twoFactorCode());
+
+        // ---- step 2: system integrity. ADMIN-only, and that IS about role. --
+        // DEC-20 rule 5: the count goes WITH A LOCK, in this same transaction.
+        if (target.getRole() == Role.ADMIN && repo.countActiveWithLock(Role.ADMIN) <= 1) {
+            throw ApiException.lastAdmin();
         }
 
         target.deactivate();
