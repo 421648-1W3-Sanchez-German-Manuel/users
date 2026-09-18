@@ -12,9 +12,9 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class TransitionsTest {
 
-    private User withStatus(AccountStatus e, Role role) {
+    private User withStatus(AccountStatus status, Role role) {
         User u = User.create("Ana", "Perez", "ana@utn.edu.ar", "$2a$12$hash", role, "v1");
-        u.forceStatusForTest(e);
+        u.forceStatusForTest(status);
         return u;
     }
 
@@ -43,7 +43,7 @@ class TransitionsTest {
 
     @ParameterizedTest
     @EnumSource(AccountStatus.class)
-    void desde_cualquier_estado_se_puede_dar_de_baja_salvo_desde_BAJA(AccountStatus from) {
+    void every_status_can_be_deactivated_except_DEACTIVATED(AccountStatus from) {
         User u = withStatus(from, Role.STUDENT);
         if (from == AccountStatus.DEACTIVATED) {
             assertThatThrownBy(u::deactivate).isInstanceOf(InvalidTransitionException.class);
@@ -55,7 +55,7 @@ class TransitionsTest {
     }
 
     @Test
-    void BAJA_es_terminal_no_transiciona_a_nada() {
+    void DEACTIVATED_is_terminal_and_cannot_transition_to_anything() {
         // This is what DEC-21 rests on: someone coming back needs a new row,
         // which is why the e-mail has to be reusable.
         User u = withStatus(AccountStatus.DEACTIVATED, Role.STUDENT);
@@ -65,7 +65,7 @@ class TransitionsTest {
     }
 
     @Test
-    void activar_desde_ACTIVA_es_transicion_invalida() {
+    void activating_from_ACTIVE_is_an_invalid_transition() {
         User u = withStatus(AccountStatus.ACTIVE, Role.STUDENT);
         assertThatThrownBy(u::activate).isInstanceOf(InvalidTransitionException.class);
     }

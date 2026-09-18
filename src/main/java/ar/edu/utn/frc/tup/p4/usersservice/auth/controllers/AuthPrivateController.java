@@ -18,8 +18,8 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
-@Tag(name = "Auth (sesion)",
-     description = "Operaciones sobre la sesion propia. Exigen un access token vigente.")
+@Tag(name = "Auth (session)",
+     description = "Operations on the current session. They require a valid access token.")
 @SecurityRequirement(name = OpenApiConfig.COOKIE_SCHEME)
 @RestController
 @RequestMapping("${app.api.private-path}/auth")
@@ -40,29 +40,29 @@ public class AuthPrivateController {
      * password change or pending onboarding still has to be able to log out.
      * The exit endpoint of a gate is exempt from both fine-grained gates.
      *
-     * El refresh a revocar viaja en la cookie fu_rt, no en el body: con
-     * HttpOnly el front ya no la puede leer para mandarla el mismo.
+     * The refresh token to revoke travels in the fu_rt cookie, not in the body:
+     * HttpOnly prevents the frontend from reading and sending it itself.
      */
-    @Operation(summary = "Cierra la sesion",
+    @Operation(summary = "Closes the session",
                description = """
-                       Exento de los TRES gates: alguien con la cuenta pendiente, con cambio de
-                       contraseña forzado o con el onboarding sin terminar tiene que poder salir
-                       igual. Una cuenta frenada que ademas no puede desloguearse es una trampa.
+                        Exempt from ALL THREE gates: someone with a pending account, a forced
+                        password change, or incomplete onboarding must still be able to log out.
+                        Blocking an account from both progressing and logging out creates a trap.
 
-                       El body es OPCIONAL: sin el se cierra la sesion, y con el `refreshToken`
-                       se mata ademas esa familia de tokens.
+                        The body is OPTIONAL: without it, the session is closed; with the
+                        `refreshToken`, that token family is also terminated.
 
-                       El gateway cachea el estado de sesion 3 s, asi que durante esa ventana el
-                       token viejo puede seguir entrando. Esperar ~4 s antes de concluir que el
-                       logout no anduvo.""")
-    @ApiResponse(responseCode = "200", description = "Sesion cerrada.")
+                        The gateway caches session state for 3 seconds, so the old token may still
+                        be accepted during that window. Wait about 4 seconds before concluding
+                        that logout did not work.""")
+    @ApiResponse(responseCode = "200", description = "Session closed.")
     @PostMapping("/logout")
-    @SkipAccountGate({SkipAccountGate.Gate.ESTADO, SkipAccountGate.Gate.PASSWORD,
+    @SkipAccountGate({SkipAccountGate.Gate.ACCOUNT_STATUS, SkipAccountGate.Gate.PASSWORD,
                       SkipAccountGate.Gate.ONBOARDING})
     public void logout(@AuthenticationPrincipal GatewayPrincipal p,
                        @CookieValue(name = SessionCookieService.REFRESH_COOKIE, required = false) String refreshJti,
                        HttpServletResponse response) {
-        exigirPersona(p);
+        requirePerson(p);
         auth.logout(p.id(), refreshJti);
         response.addHeader(HttpHeaders.SET_COOKIE, cookies.clearAccess().toString());
         response.addHeader(HttpHeaders.SET_COOKIE, cookies.clearRefresh().toString());
@@ -75,38 +75,39 @@ public class AuthPrivateController {
      * cut by the onboarding gate while /me/onboarding would be cut by the
      * password one. See the exemption rule in task 8.
      */
-    @Operation(summary = "Cambia la contraseña propia",
+    @Operation(summary = "Changes the current user's password",
                description = """
-                       Es la SALIDA del gate de contraseña, asi que esta exenta de ese gate y
-                       tambien del de onboarding. Sin la segunda exencion el ADMIN inicial queda
-                       encerrado: nace con las dos condiciones pendientes a la vez, asi que esta
-                       ruta la cortaria el gate de onboarding y `/me/onboarding` la cortaria el
-                       de contraseña.
+                        This is the EXIT from the password gate, so it is exempt from that gate and
+                        the onboarding gate. Without the second exemption, the initial ADMIN would
+                        be locked out: both conditions are pending at creation, so the onboarding
+                        gate would block this route and the password gate would block
+                        `/me/onboarding`.
 
-                       **Cambiar la contraseña CIERRA la sesion.** Hay que volver a loguearse;
-                       los tokens viejos dejan de servir.""")
-    @ApiResponse(responseCode = "200", description = "Contraseña cambiada. La sesion queda cerrada.")
+                        **Changing the password CLOSES the session.** The user must sign in again;
+                        the old tokens are no longer valid.""")
+    @ApiResponse(responseCode = "200", description = "Password changed. The session is closed.")
     @ApiResponse(responseCode = "401", description = """
-            `type`: `invalid-credentials` si `currentPassword` no coincide, o
-            `not-authenticated` si el request no trae identidad.""")
+            `type`: `invalid-credentials` if `currentPassword` does not match, or
+            `not-authenticated` if the request carries no identity.""")
     @PostMapping("/password/change")
     @SkipAccountGate({SkipAccountGate.Gate.PASSWORD, SkipAccountGate.Gate.ONBOARDING})
-    public void cambiar(@AuthenticationPrincipal GatewayPrincipal p,
-                        @Valid @RequestBody PasswordChangeRequest req) {
-        exigirPersona(p);
-        passwordService.cambiar(p.id(), req.currentPassword(), req.newPassword());
+    public void changePassword(@AuthenticationPrincipal GatewayPrincipal p,
+                               @Valid @RequestBody PasswordChangeRequest req) {
+        requirePerson(p);
+        passwordService.change(p.id(), req.currentPassword(), req.newPassword());
     }
 
     /**
-     * Estas dos rutas operan sobre la sesion de una PERSONA. Un principal de
-     * tipo "service" llega con id() == null (GatewayIdentityFilter), y el
-     * AccountGateInterceptor lo deja pasar porque los gates son de cuentas.
-     * Sin este chequeo, un token de servicio entra igual y termina operando
-     * sobre la clave session:null.
+     * These two routes operate on a PERSON'S session. A principal of type
+     * "service" arrives with id() == null (GatewayIdentityFilter), and the
+     * AccountGateInterceptor allows it through because the gates apply to accounts.
+     * Without this check, a service token would still enter and operate on the
+     * session:null key.
      *
-     * 403 y no 401: no falta identidad, sobra. Un 401 mandaria al login (regla 3).
+     * 403, not 401: identity is not missing; it is the wrong kind. A 401 would
+     * redirect to login (rule 3).
      */
-    private void exigirPersona(GatewayPrincipal p) {
+    private void requirePerson(GatewayPrincipal p) {
         if (p == null || !p.isPerson() || p.id() == null) throw ApiException.accessDenied();
     }
 }

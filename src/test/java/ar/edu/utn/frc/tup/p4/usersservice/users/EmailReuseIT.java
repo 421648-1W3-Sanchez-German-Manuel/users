@@ -18,17 +18,17 @@ class EmailReuseIT extends AbstractIntegrationTest {
 
     @Test
     void a_deactivated_email_can_be_registered_again() {
-        User primera = repo.saveAndFlush(
-                User.create("Ana", "Perez", "reuso@utn.edu.ar", "$2a$12$h", Role.STUDENT, "v1"));
-        primera.deactivate();
-        repo.saveAndFlush(primera);
+        User first = repo.saveAndFlush(
+                User.create("Ana", "Perez", "reuse@utn.edu.ar", "$2a$12$h", Role.STUDENT, "v1"));
+        first.deactivate();
+        repo.saveAndFlush(first);
 
-        User segunda = repo.saveAndFlush(
-                User.create("Ana", "Perez", "reuso@utn.edu.ar", "$2a$12$h", Role.STUDENT, "v1"));
+        User second = repo.saveAndFlush(
+                User.create("Ana", "Perez", "reuse@utn.edu.ar", "$2a$12$h", Role.STUDENT, "v1"));
 
-        assertThat(segunda.getId()).isNotEqualTo(primera.getId());
-        assertThat(repo.findByEmailAndDeletedAtIsNull("reuso@utn.edu.ar"))
-                .get().extracting(User::getId).isEqualTo(segunda.getId());
+        assertThat(second.getId()).isNotEqualTo(first.getId());
+        assertThat(repo.findByEmailAndDeletedAtIsNull("reuse@utn.edu.ar"))
+                .get().extracting(User::getId).isEqualTo(second.getId());
     }
 
     @Test
@@ -44,7 +44,7 @@ class EmailReuseIT extends AbstractIntegrationTest {
         // DEC-20 rule 4: the collation is the safety net, normalising in the
     // application is the mechanism.
         User u = repo.saveAndFlush(
-                User.create("A", "A", "MAYUS@UTN.EDU.AR", "$2a$12$h", Role.STUDENT, "v1"));
-        assertThat(u.getEmail()).isEqualTo("mayus@utn.edu.ar");
+                User.create("A", "A", "UPPERCASE@UTN.EDU.AR", "$2a$12$h", Role.STUDENT, "v1"));
+        assertThat(u.getEmail()).isEqualTo("uppercase@utn.edu.ar");
     }
 }

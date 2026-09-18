@@ -21,17 +21,17 @@ class TokenContractTest {
             List.of("iss", "sub", "roles", "type", "aud", "scope", "jti", "iat", "exp");
 
     private JWTClaimsSet person() {
-        return TokenClaims.paraPersona(UUID.randomUUID(), List.of(Role.STUDENT), "sid-1",
-                        AccountStatus.ACTIVE, false, false)
+        return TokenClaims.forPerson(UUID.randomUUID(), List.of(Role.STUDENT), "sid-1",
+                         AccountStatus.ACTIVE, false, false)
                 .build()
-                .aClaimsSet("users-service", Duration.ofMinutes(10));
+                .toClaimsSet("users-service", Duration.ofMinutes(10));
     }
 
     private JWTClaimsSet service() {
-        return TokenClaims.paraServicio(
-                        "courses-service", "users-service", Set.of("users.profile.read"))
+        return TokenClaims.forService(
+                         "courses-service", "users-service", Set.of("users.profile.read"))
                 .build()
-                .aClaimsSet("users-service", Duration.ofMinutes(5));
+                .toClaimsSet("users-service", Duration.ofMinutes(5));
     }
 
     @Test
@@ -82,10 +82,10 @@ class TokenContractTest {
     void onBehalfOfIsTheOnlyOptionalServiceClaim() {
         UUID actor = UUID.randomUUID();
         JWTClaimsSet withActor = TokenClaims
-                .paraServicio("courses-service", "users-service", Set.of("users.profile.read"))
-                .conOnBehalfOf(actor)
+                .forService("courses-service", "users-service", Set.of("users.profile.read"))
+                .withOnBehalfOf(actor)
                 .build()
-                .aClaimsSet("users-service", Duration.ofMinutes(5));
+                .toClaimsSet("users-service", Duration.ofMinutes(5));
 
         assertThat(withActor.getClaim("on_behalf_of")).isEqualTo(actor.toString());
         assertThat(service().getClaim("on_behalf_of")).isNull();

@@ -17,7 +17,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 /** DEC-32 - RF-ROL-04, DoD criterion #29. */
 class AdminRecoveryCommandTest extends AbstractIntegrationTest {
 
-    private static final String TEST_SECRET = "el-secreto-de-instalacion";
+    private static final String TEST_SECRET = "the-installation-secret";
 
     @DynamicPropertySource
     static void secretHash(DynamicPropertyRegistry registry) {
@@ -25,14 +25,14 @@ class AdminRecoveryCommandTest extends AbstractIntegrationTest {
         registry.add("users.breakglass.secret-hash", () -> hash);
     }
 
-    @Autowired AdminRecoveryCommand comando;
+    @Autowired AdminRecoveryCommand command;
     @Autowired UserRepository repo;
 
     @Test
-    void con_el_secreto_correcto_crea_un_ADMIN_con_cambio_forzado() {
-        var id = comando.recuperar(TEST_SECRET,
-                "Rescate", "Admin", "rescate-" + java.util.UUID.randomUUID() + "@utn.edu.ar",
-                "passwordvalida1");
+    void correctSecretCreatesAnAdminWithForcedPasswordChange() {
+        var id = command.recover(TEST_SECRET,
+                "Recovery", "Admin", "recovery-" + java.util.UUID.randomUUID() + "@utn.edu.ar",
+                "validpassword1");
 
         assertThat(repo.findById(id)).get().satisfies(u -> {
             assertThat(u.getRole()).isEqualTo(Role.ADMIN);
@@ -41,37 +41,37 @@ class AdminRecoveryCommandTest extends AbstractIntegrationTest {
     }
 
     @Test
-    void con_el_secreto_incorrecto_no_crea_nada() {
-        long antes = repo.count();
-        assertThatThrownBy(() -> comando.recuperar("mal", "R", "A",
-                "no-" + java.util.UUID.randomUUID() + "@utn.edu.ar", "passwordvalida1"))
+    void wrongSecretCreatesNothing() {
+        long before = repo.count();
+        assertThatThrownBy(() -> command.recover("wrong", "R", "A",
+                "no-" + java.util.UUID.randomUUID() + "@utn.edu.ar", "validpassword1"))
                 .isInstanceOf(SecurityException.class);
-        assertThat(repo.count()).isEqualTo(antes);
+        assertThat(repo.count()).isEqualTo(before);
     }
 
     @Test
-    void el_secreto_nunca_aparece_en_el_mensaje_de_error() {
-        assertThatThrownBy(() -> comando.recuperar("secreto-filtrable", "R", "A",
-                "x-" + java.util.UUID.randomUUID() + "@utn.edu.ar", "passwordvalida1"))
+    void secretNeverAppearsInTheErrorMessage() {
+        assertThatThrownBy(() -> command.recover("leakable-secret", "R", "A",
+                "x-" + java.util.UUID.randomUUID() + "@utn.edu.ar", "validpassword1"))
                 .isInstanceOf(SecurityException.class)
-                .hasMessageNotContaining("secreto-filtrable");
+                .hasMessageNotContaining("leakable-secret");
     }
 
     @Test
-    @Disabled("espera L3 · T6 AccountEventPublisher / T7 NotificationEventPublisher")
-    void el_breakglass_deja_RECUPERACION_ADMIN_en_el_outbox() {
-        // TODO: cuando L3 provea AccountEventPublisher, verificar que
-        // AdminRecoveryCommand escribe un OutboxEvent con topic "auditoria"
-        // y payload conteniendo "RECUPERACION_ADMIN" DENTRO de tx.execute.
-        // OutboxRepository es de L1 y ya existe.
+    @Disabled("waiting for L3 T6 AccountEventPublisher / T7 NotificationEventPublisher")
+    void breakglassLeavesAdminRecoveryInTheOutbox() {
+        // TODO: when L3 provides AccountEventPublisher, verify that
+        // AdminRecoveryCommand writes an OutboxEvent with topic "auditoria"
+        // and a payload containing "RECUPERACION_ADMIN" INSIDE tx.execute.
+        // OutboxRepository belongs to L1 and already exists.
     }
 
     @Test
-    @Disabled("espera L3 · T6 AccountEventPublisher / T7 NotificationEventPublisher")
-    void el_breakglass_manda_mail_a_todos_los_ADMIN_activos() {
-        // TODO: cuando L3 provea NotificationEventPublisher, verificar que
-        // AdminRecoveryCommand llama a mails.enviar(EmailType.BREAKGLASS_ALERT, ...)
-        // para cada ADMIN activo distinto del recién creado.
-        // EmailType y NotificationEventPublisher son de L3.
+    @Disabled("waiting for L3 T6 AccountEventPublisher / T7 NotificationEventPublisher")
+    void breakglassEmailsEveryActiveAdmin() {
+        // TODO: when L3 provides NotificationEventPublisher, verify that
+        // AdminRecoveryCommand calls mails.send(EmailType.BREAKGLASS_ALERT, ...)
+        // for every active ADMIN other than the newly created one.
+        // EmailType and NotificationEventPublisher belong to L3.
     }
 }

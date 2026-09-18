@@ -17,55 +17,55 @@ class OtpServiceIT extends AbstractIntegrationTest {
 
     @Test
     void generatesSixDigits() {
-        assertThat(otp.generar("test:1", Duration.ofMinutes(5))).matches("\\d{6}");
+        assertThat(otp.generate("test:1", Duration.ofMinutes(5))).matches("\\d{6}");
     }
 
     @Test
     void correctCodeVerifiesAndIsConsumed() {
-        String code = otp.generar("test:2", Duration.ofMinutes(5));
-        otp.verificar("test:2", code);
+        String code = otp.generate("test:2", Duration.ofMinutes(5));
+        otp.verify("test:2", code);
 
-        assertThatThrownBy(() -> otp.verificar("test:2", code))
+        assertThatThrownBy(() -> otp.verify("test:2", code))
                 .isInstanceOf(ApiException.class);
     }
 
     @Test
     void wrongCodeAndUnknownKeyReturnTheSameResponse() {
-        String code = otp.generar("test:3", Duration.ofMinutes(5));
+        String code = otp.generate("test:3", Duration.ofMinutes(5));
         String wrongCode = code.equals("000000") ? "000001" : "000000";
 
-        String wrongCodeMessage = capture(() -> otp.verificar("test:3", wrongCode));
-        String unknownKeyMessage = capture(() -> otp.verificar("test:unknown", code));
+        String wrongCodeMessage = capture(() -> otp.verify("test:3", wrongCode));
+        String unknownKeyMessage = capture(() -> otp.verify("test:unknown", code));
 
         assertThat(wrongCodeMessage).isEqualTo(unknownKeyMessage);
     }
 
     @Test
     void fifthFailureInvalidatesTheCode() {
-        String code = otp.generar("test:4", Duration.ofMinutes(30));
+        String code = otp.generate("test:4", Duration.ofMinutes(30));
         String wrongCode = code.equals("000000") ? "000001" : "000000";
 
         for (int attempt = 0; attempt < 5; attempt++) {
-            assertThatThrownBy(() -> otp.verificar("test:4", wrongCode))
+            assertThatThrownBy(() -> otp.verify("test:4", wrongCode))
                     .isInstanceOf(ApiException.class);
         }
 
-        assertThatThrownBy(() -> otp.verificar("test:4", code))
+        assertThatThrownBy(() -> otp.verify("test:4", code))
                 .isInstanceOf(ApiException.class);
     }
 
     @Test
     void regeneratingOverwritesThePreviousCode() {
-        String previousCode = otp.generar("test:5", Duration.ofMinutes(30));
-        String newCode = otp.generar("test:5", Duration.ofMinutes(30));
+        String previousCode = otp.generate("test:5", Duration.ofMinutes(30));
+        String newCode = otp.generate("test:5", Duration.ofMinutes(30));
         while (newCode.equals(previousCode)) {
-            newCode = otp.generar("test:5", Duration.ofMinutes(30));
+            newCode = otp.generate("test:5", Duration.ofMinutes(30));
         }
 
         String currentCode = newCode;
-        assertThatThrownBy(() -> otp.verificar("test:5", previousCode))
+        assertThatThrownBy(() -> otp.verify("test:5", previousCode))
                 .isInstanceOf(ApiException.class);
-        otp.verificar("test:5", currentCode);
+        otp.verify("test:5", currentCode);
     }
 
     private String capture(Runnable action) {

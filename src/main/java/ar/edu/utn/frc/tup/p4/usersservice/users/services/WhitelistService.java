@@ -16,54 +16,54 @@ import java.util.*;
 @Service
 public class WhitelistService {
 
-    private final EmailWhitelistRepository lista;
-    private final WhitelistRequestRepository solicitudes;
-    private final UserRepository usuarios;
+    private final EmailWhitelistRepository whitelist;
+    private final WhitelistRequestRepository requests;
+    private final UserRepository users;
     private final NotificationEventPublisher mails;
 
-    public WhitelistService(EmailWhitelistRepository lista, WhitelistRequestRepository solicitudes,
-                            UserRepository usuarios, NotificationEventPublisher mails) {
-        this.lista = lista; this.solicitudes = solicitudes;
-        this.usuarios = usuarios; this.mails = mails;
+    public WhitelistService(EmailWhitelistRepository whitelist, WhitelistRequestRepository requests,
+                            UserRepository users, NotificationEventPublisher mails) {
+        this.whitelist = whitelist; this.requests = requests;
+        this.users = users; this.mails = mails;
     }
 
     @Transactional
-    public UUID agregar(UUID actor, String email, Role role) {
-        Role efectivo = role == null ? Role.PROFESSOR : role;
-        if (efectivo != Role.PROFESSOR && efectivo != Role.GESTOR) {
-            throw ApiException.validation("La whitelist solo admite PROFESSOR o GESTOR.");
+    public UUID add(UUID actor, String email, Role role) {
+        Role effectiveRole = role == null ? Role.PROFESSOR : role;
+        if (effectiveRole != Role.PROFESSOR && effectiveRole != Role.GESTOR) {
+            throw ApiException.validation("The whitelist accepts only PROFESSOR or GESTOR.");
         }
-        String normalizado = email.toLowerCase(Locale.ROOT);
-        if (lista.existsByEmailAndDeletedAtIsNull(normalizado)) {
+        String normalized = email.toLowerCase(Locale.ROOT);
+        if (whitelist.existsByEmailAndDeletedAtIsNull(normalized)) {
             throw ApiException.duplicateEmail();
         }
-        return lista.saveAndFlush(EmailWhitelist.create(normalizado, efectivo, actor)).getId();
+        return whitelist.saveAndFlush(EmailWhitelist.create(normalized, effectiveRole, actor)).getId();
     }
 
     @Transactional
     public void remove(UUID id) {
-        EmailWhitelist e = lista.findById(id).orElseThrow(ApiException::accessDenied);
+        EmailWhitelist e = whitelist.findById(id).orElseThrow(ApiException::accessDenied);
         e.remove();
-        lista.save(e);
+        whitelist.save(e);
     }
 
     @Transactional(readOnly = true)
-    public List<EmailWhitelist> listar() { return lista.findAllByDeletedAtIsNullOrderByCreatedAtDesc(); }
+    public List<EmailWhitelist> list() { return whitelist.findAllByDeletedAtIsNullOrderByCreatedAtDesc(); }
 
     /** DEC-29 · the ADMIN's review queue, newest first. */
     @Transactional(readOnly = true)
-    public List<WhitelistRequest> listarSolicitudes() {
-        return solicitudes.findAll(Sort.by(Sort.Direction.DESC, "createdAt"));
+    public List<WhitelistRequest> listRequests() {
+        return requests.findAll(Sort.by(Sort.Direction.DESC, "createdAt"));
     }
 
     @Transactional
-    public UUID solicitar(UUID profesorId, String email, String reason) {
+    public UUID request(UUID professorId, String email, String reason) {
         // The unique key on pending_email makes the second open request fail.
-        WhitelistRequest r = solicitudes.saveAndFlush(
-                WhitelistRequest.create(email, profesorId, reason));
+        WhitelistRequest r = requests.saveAndFlush(
+                WhitelistRequest.create(email, professorId, reason));
 
         // GESTOR now attends the review queue too, so it must hear about new requests as well.
-        usuarios.findAll().stream()
+        users.findAll().stream()
                 .filter(u -> (u.getRole() == Role.ADMIN || u.getRole() == Role.GESTOR) && u.getDeletedAt() == null)
                 .forEach(a -> mails.send(
                         EmailType.WHITELIST_SUBMISSION,
@@ -74,36 +74,37 @@ public class WhitelistService {
     }
 
     /**
-     * DEC-29 · ATOMICO: marcar APPROVED e insertar en la whitelist ocurren en
-     * la misma transaccion. No hay estado intermedio donde la request quede
-     * aprobada con el email sin estar en la whitelist.
+     * DEC-29 - ATOMIC: marking APPROVED and inserting into the whitelist occur
+     * in the same transaction. There is no intermediate state where the request
+     * is approved but the email is absent from the whitelist.
      */
     @Transactional
-    public void resolver(UUID adminId, UUID solicitudId, boolean approve, String rejectionReason) {
-        WhitelistRequest r = solicitudes.findById(solicitudId).orElseThrow(ApiException::accessDenied);
+    public void resolve(UUID adminId, UUID requestId, boolean approve, String rejectionReason) {
+        WhitelistRequest r = requests.findById(requestId).orElseThrow(ApiException::accessDenied);
 
         if (approve) {
-            // solicitar() is PROFESSOR-only (a colleague referral), so the role is always PROFESSOR.
+            // request() is PROFESSOR-only (a colleague referral), so the role is always PROFESSOR.
             // The active_email unique key means an email can only be whitelisted for one role at
             // a time: if it's already active under GESTOR (or another role), approving here would
             // mark the request APPROVED without ever inserting a usable PROFESSOR row.
-            boolean yaProfesor = lista.existsByEmailAndRoleAndDeletedAtIsNull(r.getRequestedEmail(), Role.PROFESSOR);
-            if (!yaProfesor && lista.existsByEmailAndDeletedAtIsNull(r.getRequestedEmail())) {
+            boolean alreadyProfessor = whitelist.existsByEmailAndRoleAndDeletedAtIsNull(
+                    r.getRequestedEmail(), Role.PROFESSOR);
+            if (!alreadyProfessor && whitelist.existsByEmailAndDeletedAtIsNull(r.getRequestedEmail())) {
                 throw ApiException.validation(
-                        "El email ya esta habilitado con otro rol. Sacalo de la whitelist antes de aprobar esta solicitud.");
+                        "The email is already authorized under another role. Remove it from the whitelist before approving this request.");
             }
             r.approve(adminId);
-            if (!yaProfesor) {
-                lista.save(EmailWhitelist.create(r.getRequestedEmail(), Role.PROFESSOR, adminId));
+            if (!alreadyProfessor) {
+                whitelist.save(EmailWhitelist.create(r.getRequestedEmail(), Role.PROFESSOR, adminId));
             }
         } else {
             r.reject(adminId, rejectionReason);
         }
-        solicitudes.save(r);
+        requests.save(r);
 
-        usuarios.findByIdAndDeletedAtIsNull(r.getRequestedBy()).ifPresent(prof ->
-                mails.send(EmailType.WHITELIST_DECISION, prof.getId(), prof.getEmail(), Map.of(
-                        "firstNames", prof.getFirstNames(),
+        users.findByIdAndDeletedAtIsNull(r.getRequestedBy()).ifPresent(professor ->
+                mails.send(EmailType.WHITELIST_DECISION, professor.getId(), professor.getEmail(), Map.of(
+                        "firstNames", professor.getFirstNames(),
                         "emailSolicitado", r.getRequestedEmail(),
                         "resultado", approve ? RequestStatus.APPROVED.name()
                                              : RequestStatus.REJECTED.name(),

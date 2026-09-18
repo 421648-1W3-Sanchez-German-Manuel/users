@@ -4,10 +4,10 @@ import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 
 /**
- * RF-ROL-03 - solo crea ADMIN. PROFESSOR y STUDENT entran unicamente por
- * whitelist + auto-registro (RegistrationController); un ADMIN dandoles de
- * alta con password directo los dejaba en PENDING_EMAIL sin enlace de
- * activacion, una cuenta que no se podia activar nunca.
+ * RF-ROL-03 - creates ADMIN accounts only. PROFESSOR and STUDENT enter only
+ * through the whitelist plus self-registration (RegistrationController); an
+ * ADMIN creating them directly with a password would leave them in PENDING_EMAIL
+ * without an activation link, making the account impossible to activate.
  */
 public record CreateUserRequest(@NotBlank String firstNames, @NotBlank String lastNames,
                                   @NotBlank @Email String email, @NotBlank String password) { }

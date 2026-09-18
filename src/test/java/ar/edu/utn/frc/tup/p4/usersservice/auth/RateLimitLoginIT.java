@@ -15,15 +15,15 @@ import static org.assertj.core.api.Assertions.assertThat;
 import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-/** DEC-42 · criterio de DoD #30. */
+/** DEC-42, DoD criterion #30. */
 class RateLimitLoginIT extends AbstractIntegrationTest {
 
     /**
-     * MySQL y Redis son singletons compartidos SIN cleanup entre clases
-     * (AbstractIntegrationTest). Con direcciones fijas, cualquier otro lote
-     * que tome una de estas, o una corrida repetida en la misma JVM, produce
-     * un 409 de clave duplicada en el INSERT del fixture y se lee como falla
-     * del codigo bajo prueba.
+     * MySQL and Redis are shared singletons with NO cleanup between classes
+     * (AbstractIntegrationTest). With fixed addresses, any other batch that
+     * uses one of them, or a repeated run in the same JVM, causes a duplicate
+     * key 409 in the fixture INSERT that looks like a failure in the code under
+     * test.
      */
     private static final String SUF = "-" + UUID.randomUUID() + "@utn.edu.ar";
 
@@ -32,14 +32,14 @@ class RateLimitLoginIT extends AbstractIntegrationTest {
     @Autowired PasswordEncoder encoder;
 
     @Test
-    void al_sexto_FALLO_sobre_el_mismo_email_responde_429() {
-        crear("rl1" + SUF);
+    void sixthFailureForTheSameEmailReturns429() {
+        createUser("rl1" + SUF);
         for (int i = 0; i < 5; i++) {
-            assertThatThrownBy(() -> auth.login("rl1" + SUF, "malamala1234"))
+            assertThatThrownBy(() -> auth.login("rl1" + SUF, "verywrong1234"))
                     .isInstanceOf(ApiException.class)
                     .extracting(e -> ((ApiException) e).getStatus().value()).isEqualTo(401);
         }
-        assertThatThrownBy(() -> auth.login("rl1" + SUF, "malamala1234"))
+        assertThatThrownBy(() -> auth.login("rl1" + SUF, "verywrong1234"))
                 .isInstanceOf(ApiException.class)
                 .satisfies(e -> {
                     assertThat(((ApiException) e).getStatus().value()).isEqualTo(429);
@@ -49,52 +49,52 @@ class RateLimitLoginIT extends AbstractIntegrationTest {
     }
 
     @Test
-    void un_login_EXITOSO_no_consume_presupuesto_y_limpia_los_fallos() {
+    void successfulLoginDoesNotConsumeTheBudgetAndClearsFailures() {
         // It counts failures, not attempts: a legitimate user never hits the limit.
-        crear("rl2" + SUF);
+        createUser("rl2" + SUF);
         for (int i = 0; i < 4; i++) {
-            assertThatThrownBy(() -> auth.login("rl2" + SUF, "malamala1234"))
+            assertThatThrownBy(() -> auth.login("rl2" + SUF, "verywrong1234"))
                     .isInstanceOf(ApiException.class);
         }
-        auth.login("rl2" + SUF, "passwordvalida1");   // acierta -> limpia
+        auth.login("rl2" + SUF, "validpassword1");   // succeeds, then clears
 
-        // Vuelve a tener las 5 oportunidades completas.
+        // All five opportunities are available again.
         for (int i = 0; i < 5; i++) {
-            assertThatThrownBy(() -> auth.login("rl2" + SUF, "malamala1234"))
+            assertThatThrownBy(() -> auth.login("rl2" + SUF, "verywrong1234"))
                     .isInstanceOf(ApiException.class)
                     .extracting(e -> ((ApiException) e).getStatus().value()).isEqualTo(401);
         }
     }
 
     @Test
-    void el_limite_es_por_email_no_global() {
-        crear("rl3" + SUF);
-        crear("rl4" + SUF);
+    void limitIsPerEmailRatherThanGlobal() {
+        createUser("rl3" + SUF);
+        createUser("rl4" + SUF);
         for (int i = 0; i < 6; i++) {
-            try { auth.login("rl3" + SUF, "malamala1234"); } catch (ApiException ignored) { }
+            try { auth.login("rl3" + SUF, "verywrong1234"); } catch (ApiException ignored) { }
         }
-        // La otra cuenta no quedo afectada.
-        assertThatThrownBy(() -> auth.login("rl4" + SUF, "malamala1234"))
+        // The other account remains unaffected.
+        assertThatThrownBy(() -> auth.login("rl4" + SUF, "verywrong1234"))
                 .isInstanceOf(ApiException.class)
                 .extracting(e -> ((ApiException) e).getStatus().value()).isEqualTo(401);
     }
 
     @Test
-    void al_sexto_DESAFIO_de_2fa_sobre_el_mismo_email_responde_429() {
-        // Presupuesto separado del de fallos: acertar la password no lo limpia.
-        // Sin esto, quien robo la password inunda de mails al dueno de la cuenta.
-        crear("rl5" + SUF);
+    void sixthTwoFactorChallengeForTheSameEmailReturns429() {
+        // This budget is separate from failures: a correct password does not clear it.
+        // Otherwise, someone who stole the password could flood the account owner's inbox.
+        createUser("rl5" + SUF);
         for (int i = 0; i < 5; i++) {
-            assertThat(auth.login("rl5" + SUF, "passwordvalida1").challengeId()).isNotBlank();
+            assertThat(auth.login("rl5" + SUF, "validpassword1").challengeId()).isNotBlank();
         }
-        assertThatThrownBy(() -> auth.login("rl5" + SUF, "passwordvalida1"))
+        assertThatThrownBy(() -> auth.login("rl5" + SUF, "validpassword1"))
                 .isInstanceOf(ApiException.class)
                 .extracting(e -> ((ApiException) e).getStatus().value()).isEqualTo(429);
     }
 
-    private void crear(String email) {
-        User u = User.create("A", "A", email, encoder.encode("passwordvalida1"), Role.STUDENT, "v1");
-        u.forceStatusForTest(AccountStatus.ACTIVE);
-        repo.saveAndFlush(u);
+    private void createUser(String email) {
+        User user = User.create("A", "A", email, encoder.encode("validpassword1"), Role.STUDENT, "v1");
+        user.forceStatusForTest(AccountStatus.ACTIVE);
+        repo.saveAndFlush(user);
     }
 }

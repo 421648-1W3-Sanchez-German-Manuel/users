@@ -38,7 +38,7 @@ public class AdminBootstrap implements ApplicationRunner {
     private final String password;
     private final String firstNames;
     private final String lastNames;
-    private final String tycVigente;
+    private final String currentTermsVersion;
 
     public AdminBootstrap(UserRepository repo, PasswordEncoder encoder,
                           TransactionTemplate tx,
@@ -46,7 +46,7 @@ public class AdminBootstrap implements ApplicationRunner {
                           @Value("${users.bootstrap.password:}") String password,
                           @Value("${users.bootstrap.first-names:Admin}") String firstNames,
                           @Value("${users.bootstrap.last-names:Inicial}") String lastNames,
-                          @Value("${users.legal.terms-version}") String tycVigente) {
+                           @Value("${users.legal.terms-version}") String currentTermsVersion) {
         this.repo = repo;
         this.encoder = encoder;
         this.tx = tx;
@@ -54,7 +54,7 @@ public class AdminBootstrap implements ApplicationRunner {
         this.password = password;
         this.firstNames = firstNames;
         this.lastNames = lastNames;
-        this.tycVigente = tycVigente;
+        this.currentTermsVersion = currentTermsVersion;
     }
 
     @Override
@@ -71,7 +71,7 @@ public class AdminBootstrap implements ApplicationRunner {
 
         UUID id = tx.execute(s -> {
             User admin = User.createAdmin(firstNames, lastNames, email.toLowerCase(),
-                    encoder.encode(clear), tycVigente);
+                    encoder.encode(clear), currentTermsVersion);
             return repo.saveAndFlush(admin).getId();
         });
 

@@ -44,7 +44,7 @@ class ClientCredentialsIT extends AbstractIntegrationTest {
 
     @Test
     void correctAudienceIssuesServiceToken() throws Exception {
-        String jwt = service.emitirServicio(
+        String jwt = service.issueServiceToken(
                 CLIENT_ID, CLIENT_SECRET, "users.profile.read", "users-service");
 
         var claims = SignedJWT.parse(jwt).getJWTClaimsSet();
@@ -56,7 +56,7 @@ class ClientCredentialsIT extends AbstractIntegrationTest {
 
     @Test
     void missingAudienceReturns400WithoutIssuing() {
-        assertThatThrownBy(() -> service.emitirServicio(
+        assertThatThrownBy(() -> service.issueServiceToken(
                 CLIENT_ID, CLIENT_SECRET, "users.profile.read", null))
                 .isInstanceOf(ApiException.class)
                 .satisfies(error -> assertThat(((ApiException) error).getStatus().value()).isEqualTo(400));
@@ -64,7 +64,7 @@ class ClientCredentialsIT extends AbstractIntegrationTest {
 
     @Test
     void audienceNotDerivedFromScopeReturns400() {
-        assertThatThrownBy(() -> service.emitirServicio(
+        assertThatThrownBy(() -> service.issueServiceToken(
                 CLIENT_ID, CLIENT_SECRET, "users.profile.read", "courses-service"))
                 .isInstanceOf(ApiException.class)
                 .satisfies(error -> assertThat(((ApiException) error).getStatus().value()).isEqualTo(400));
@@ -72,7 +72,7 @@ class ClientCredentialsIT extends AbstractIntegrationTest {
 
     @Test
     void nonIssuableScopeReturns400() {
-        assertThatThrownBy(() -> service.emitirServicio(
+        assertThatThrownBy(() -> service.issueServiceToken(
                 CLIENT_ID, CLIENT_SECRET, "mailing.debug.read", "mailing-service"))
                 .isInstanceOf(ApiException.class)
                 .satisfies(error -> assertThat(((ApiException) error).getStatus().value()).isEqualTo(400));
@@ -84,7 +84,7 @@ class ClientCredentialsIT extends AbstractIntegrationTest {
         repository.saveAndFlush(ServiceClient.create(
                 clientId, encoder.encode("another-secret"), "Other", Set.of()));
 
-        assertThatThrownBy(() -> service.emitirServicio(
+        assertThatThrownBy(() -> service.issueServiceToken(
                 clientId, "another-secret", "users.profile.read", "users-service"))
                 .isInstanceOf(ApiException.class)
                 .satisfies(error -> assertThat(((ApiException) error).getStatus().value()).isEqualTo(400));
@@ -92,9 +92,9 @@ class ClientCredentialsIT extends AbstractIntegrationTest {
 
     @Test
     void wrongSecretAndUnknownClientReturnSameError() {
-        String wrongSecret = capture(() -> service.emitirServicio(
+        String wrongSecret = capture(() -> service.issueServiceToken(
                 CLIENT_ID, "wrong", "users.profile.read", "users-service"));
-        String unknownClient = capture(() -> service.emitirServicio(
+        String unknownClient = capture(() -> service.issueServiceToken(
                 "unknown-service", "wrong", "users.profile.read", "users-service"));
 
         assertThat(wrongSecret).isEqualTo(unknownClient);

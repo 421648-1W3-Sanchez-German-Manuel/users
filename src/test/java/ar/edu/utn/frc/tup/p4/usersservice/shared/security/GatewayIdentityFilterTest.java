@@ -43,25 +43,25 @@ class GatewayIdentityFilterTest {
     }
 
     @Test
-    void servicio_con_MS_dentro_de_scopes_mapea_a_ROLE_MS_y_el_resto_a_authorities() throws Exception {
+    void a_service_with_MS_among_its_scopes_maps_it_to_ROLE_MS_and_the_rest_to_authorities() throws Exception {
         // DEC-05: "MS,users.profile.read". MS goes in as ROLE_ so that
         // hasRole('MS') matches; scopes go in as bare authorities so that
         // hasAuthority('users.profile.read') matches.
         MockHttpServletRequest req = new MockHttpServletRequest();
         req.addHeader(IdentityHeaders.PRINCIPAL_TYPE, "service");
-        req.addHeader(IdentityHeaders.SERVICE_ID, "cursos-service");
+        req.addHeader(IdentityHeaders.SERVICE_ID, "courses-service");
         req.addHeader(IdentityHeaders.SERVICE_SCOPES, "MS,users.profile.read");
 
         Authentication auth = run(req);
 
         assertThat(auth.getAuthorities()).extracting(GrantedAuthority::getAuthority)
                 .containsExactlyInAnyOrder("ROLE_MS", "users.profile.read");
-        assertThat(((GatewayPrincipal) auth.getPrincipal()).serviceId()).isEqualTo("cursos-service");
+        assertThat(((GatewayPrincipal) auth.getPrincipal()).serviceId()).isEqualTo("courses-service");
         assertThat(((GatewayPrincipal) auth.getPrincipal()).isPerson()).isFalse();
     }
 
     @Test
-    void sin_headers_no_hay_Authentication() throws Exception {
+    void no_headers_produces_no_Authentication() throws Exception {
         // Third case: a public route. It is not an error; it simply does not authenticate.
         assertThat(run(new MockHttpServletRequest())).isNull();
     }

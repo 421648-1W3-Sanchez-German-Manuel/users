@@ -20,101 +20,101 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 @Import(TestActivationSpy.Config.class)
 class ActivationLinkIT extends AbstractIntegrationTest {
 
-    @Autowired RegistrationService registro;
+    @Autowired RegistrationService registration;
     @Autowired UserRepository repo;
     @Autowired TestActivationSpy mailSpy;
     @Autowired StringRedisTemplate redis;
 
-    private void altaAlumno(String email) {
-        registro.registrarAlumno("Ana", "Perez", "76543", email,
-                "passwordvalida1", "PROG4-2026-A1", "v1");
+    private void registerStudent(String email) {
+        registration.registerStudent("Ana", "Perez", "76543", email,
+                "validpassword1", "PROG4-2026-A1", "v1");
     }
 
-    private AccountStatus estadoDe(String email) {
+    private AccountStatus statusOf(String email) {
         return repo.findByEmailAndDeletedAtIsNull(email).orElseThrow().getAccountStatus();
     }
 
     @Test
-    void el_enlace_correcto_activa_la_cuenta() {
-        altaAlumno("act1@utn.edu.ar");
-        assertThat(estadoDe("act1@utn.edu.ar")).isEqualTo(AccountStatus.PENDING_EMAIL);
+    void the_correct_link_activates_the_account() {
+        registerStudent("act1@utn.edu.ar");
+        assertThat(statusOf("act1@utn.edu.ar")).isEqualTo(AccountStatus.PENDING_EMAIL);
 
-        registro.activate(mailSpy.ultimoTokenActivacion());
+        registration.activate(mailSpy.latestActivationToken());
 
-        // STUDENT -> PENDING_COURSE, no ACTIVE: falta que Cursos valide el legajo.
-        assertThat(estadoDe("act1@utn.edu.ar")).isEqualTo(AccountStatus.PENDING_COURSE);
+        // STUDENT -> PENDING_COURSE, not ACTIVE: Courses still has to validate the legajo.
+        assertThat(statusOf("act1@utn.edu.ar")).isEqualTo(AccountStatus.PENDING_COURSE);
     }
 
     @Test
-    void el_enlace_se_usa_UNA_sola_vez() {
+    void the_link_can_be_used_only_ONCE() {
         // The second click can neither reactivate nor leak that the account exists.
-        altaAlumno("act2@utn.edu.ar");
-        String token = mailSpy.ultimoTokenActivacion();
+        registerStudent("act2@utn.edu.ar");
+        String token = mailSpy.latestActivationToken();
 
-        registro.activate(token);
-        assertThatThrownBy(() -> registro.activate(token)).isInstanceOf(ApiException.class);
+        registration.activate(token);
+        assertThatThrownBy(() -> registration.activate(token)).isInstanceOf(ApiException.class);
     }
 
     @Test
-    void enlace_usado_e_inexistente_dan_LA_MISMA_respuesta() {
-        // Anti-enumeracion: el detail no distingue vencido, usado ni inventado.
-        altaAlumno("act3@utn.edu.ar");
-        String token = mailSpy.ultimoTokenActivacion();
-        registro.activate(token);
+    void used_and_nonexistent_links_return_THE_SAME_response() {
+        // Anti-enumeration: the detail does not distinguish expired, used, or fabricated links.
+        registerStudent("act3@utn.edu.ar");
+        String token = mailSpy.latestActivationToken();
+        registration.activate(token);
 
-        String usado = capturar(() -> registro.activate(token));
-        String inventado = capturar(() -> registro.activate("token-que-no-existe-de-largo-suficiente"));
-        assertThat(usado).isEqualTo(inventado);
+        String used = capture(() -> registration.activate(token));
+        String fabricated = capture(() -> registration.activate("nonexistent-token-with-sufficient-length"));
+        assertThat(used).isEqualTo(fabricated);
     }
 
     @Test
-    void reenviar_genera_uno_nuevo_e_invalida_el_anterior() {
+    void resending_generates_a_new_link_and_invalidates_the_previous_one() {
         // Without the per-e-mail index the old link would stay alive in parallel.
-        altaAlumno("act4@utn.edu.ar");
-        String viejo = mailSpy.ultimoTokenActivacion();
+        registerStudent("act4@utn.edu.ar");
+        String oldToken = mailSpy.latestActivationToken();
 
-        registro.reenviarActivacion("act4@utn.edu.ar");
-        String nuevo = mailSpy.ultimoTokenActivacion();
+        registration.resendActivation("act4@utn.edu.ar");
+        String newToken = mailSpy.latestActivationToken();
 
-        assertThat(nuevo).isNotEqualTo(viejo);
-        assertThatThrownBy(() -> registro.activate(viejo)).isInstanceOf(ApiException.class);
+        assertThat(newToken).isNotEqualTo(oldToken);
+        assertThatThrownBy(() -> registration.activate(oldToken)).isInstanceOf(ApiException.class);
 
-        registro.activate(nuevo);
-        assertThat(estadoDe("act4@utn.edu.ar")).isEqualTo(AccountStatus.PENDING_COURSE);
+        registration.activate(newToken);
+        assertThat(statusOf("act4@utn.edu.ar")).isEqualTo(AccountStatus.PENDING_COURSE);
     }
 
     @Test
-    void reenviar_a_un_email_inexistente_responde_igual_que_a_uno_real() {
-        altaAlumno("act5@utn.edu.ar");
-        assertThat(registro.reenviarActivacion("nadie@utn.edu.ar"))
-                .isEqualTo(registro.reenviarActivacion("act5@utn.edu.ar"));
+    void resending_to_an_unknown_email_returns_the_same_response_as_a_real_one() {
+        registerStudent("act5@utn.edu.ar");
+        assertThat(registration.resendActivation("nobody@utn.edu.ar"))
+                .isEqualTo(registration.resendActivation("act5@utn.edu.ar"));
     }
 
     @Test
-    void el_token_no_se_guarda_en_claro() {
+    void the_token_is_not_stored_in_plaintext() {
         // Whoever can read Redis must not be able to activate other people's accounts.
-        altaAlumno("act6@utn.edu.ar");
-        String token = mailSpy.ultimoTokenActivacion();
+        registerStudent("act6@utn.edu.ar");
+        String token = mailSpy.latestActivationToken();
 
         assertThat(redis.hasKey("activacion:" + token)).isFalse();
-        registro.activate(token);   // pero el token del mail si funciona
-        assertThat(estadoDe("act6@utn.edu.ar")).isEqualTo(AccountStatus.PENDING_COURSE);
+        registration.activate(token);   // The token from the email still works.
+        assertThat(statusOf("act6@utn.edu.ar")).isEqualTo(AccountStatus.PENDING_COURSE);
     }
 
     @Test
     void missingInvitationCodeReturnsAControlledError() {
         String email = "act7@utn.edu.ar";
-        altaAlumno(email);
-        String token = mailSpy.ultimoTokenActivacion();
+        registerStudent(email);
+        String token = mailSpy.latestActivationToken();
         redis.delete("invitacion:" + email);
 
-        assertThatThrownBy(() -> registro.activate(token))
+        assertThatThrownBy(() -> registration.activate(token))
                 .isInstanceOf(ApiException.class)
                 .isNotInstanceOf(NullPointerException.class);
-        assertThat(estadoDe(email)).isEqualTo(AccountStatus.PENDING_EMAIL);
+        assertThat(statusOf(email)).isEqualTo(AccountStatus.PENDING_EMAIL);
     }
 
-    private String capturar(Runnable r) {
-        try { r.run(); return "no-fallo"; } catch (ApiException e) { return e.getMessage(); }
+    private String capture(Runnable action) {
+        try { action.run(); return "did-not-fail"; } catch (ApiException e) { return e.getMessage(); }
     }
 }

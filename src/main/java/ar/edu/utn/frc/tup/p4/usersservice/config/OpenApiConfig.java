@@ -19,150 +19,152 @@ import org.springframework.context.annotation.Configuration;
 import java.util.Map;
 
 /**
- * El spec de OpenAPI del servicio.
+ * The service's OpenAPI specification.
  *
- * <p><b>Por que el esquema es una cookie y no Bearer ni los headers X-*.</b>
- * Este servicio NO valida JWT (DEC-08): recibe la identidad ya resuelta en
- * {@code X-User-Id} / {@code X-User-Roles}, que inyecta el gateway. Documentar
- * esos headers como el mecanismo de auth estaria mal por dos motivos:
+ * <p><b>Why the scheme is a cookie rather than Bearer or the X-* headers.</b>
+ * This service does NOT validate JWTs (DEC-08): it receives an identity already
+ * resolved in {@code X-User-Id} / {@code X-User-Roles}, which the gateway
+ * injects. Documenting those headers as the authentication mechanism would be
+ * wrong for two reasons:
  *
  * <ol>
- *   <li>Quien lee esta pantalla la abre por nginx:3000, asi que su "Try it out"
- *       sale por nginx -> gateway -> aca. Los X-* los pone el gateway en el
- *       camino, el cliente nunca los manda.</li>
- *   <li>Documentar los X-* como algo que el cliente manda es documentar el
- *       agujero del no-negociable 1: esos headers son reservados y el gateway
- *       los pisa. Un ejemplo copiable que los mande a mano es una invitacion a
- *       intentar justamente lo que el diseño prohibe.</li>
+ *   <li>Readers open this page through nginx:3000, so "Try it out" goes through
+ *       nginx -> gateway -> here. The gateway adds the X-* headers along the
+ *       way; the client never sends them.</li>
+ *   <li>Documenting X-* as client-supplied would document the vulnerability
+ *       covered by non-negotiable 1: those headers are reserved and the gateway
+ *       overwrites them. A copyable example that sends them manually would
+ *       invite exactly what the design prohibits.</li>
  * </ol>
  *
- * <p>Tampoco es Bearer por header: el gateway (spec "Sesion en Cookies",
- * decision 3 de {@code PrivateRouteGuard}) exige que un principal de tipo
- * persona llegue por la cookie {@code fu_at} y rechaza con 401 el mismo token
- * si viaja por {@code Authorization}. Documentar Bearer invitaria a pegar el
- * access token en el header de Swagger UI y ver un 401 enganoso. Como esta
- * pantalla se abre bajo el mismo origen que la API, el navegador ya manda la
- * cookie sola despues del login; no hay nada que tipear.
+ * <p>It is not a Bearer header either: the gateway ("Cookie Sessions" spec,
+ * decision 3 of {@code PrivateRouteGuard}) requires a person principal to
+ * arrive in the {@code fu_at} cookie and rejects the same token with 401 if it
+ * travels in {@code Authorization}. Documenting Bearer would invite users to
+ * paste the access token into Swagger UI's header and see a misleading 401.
+ * Since this page is served from the same origin as the API, the browser sends
+ * the cookie automatically after login; there is nothing to type.
  *
- * <p>No se declara {@code servers}: el spec se sirve bajo el mismo origen que
- * la API (nginx:3000), asi que Swagger UI resuelve relativo y "Try it out"
- * funciona sin configurar nada. Una URL absoluta aca rompe el dia que cambie
- * el puerto o el host del compose.
+ * <p>No {@code servers} entry is declared: the specification is served from the
+ * same origin as the API (nginx:3000), so Swagger UI resolves paths relatively
+ * and "Try it out" works without configuration. An absolute URL here would
+ * break whenever the compose port or host changes.
  */
 @Configuration
 public class OpenApiConfig {
 
-    /** El nombre con el que los controllers privados referencian el esquema. */
+    /** The name private controllers use to reference the scheme. */
     public static final String COOKIE_SCHEME = "cookieAuth";
 
     @Bean
     OpenAPI usersServiceOpenApi() {
         return new OpenAPI()
                 .info(new Info()
-                        .title("users-service · Tema 01 · Identidad y Usuarios")
+                        .title("users-service - Topic 01 - Identity and Users")
                         .version("v1")
                         .description("""
-                                Dueño de la identidad de la plataforma: registro, credenciales,
-                                sesiones, roles y emision de tokens.
+                                Owner of platform identity: registration, credentials, sessions,
+                                roles and token issuance.
 
-                                **Todo entra por el API gateway.** Este servicio no publica
-                                puertos y no valida el JWT: confia en los headers `X-*` que le
-                                inyecta el gateway despues de validar la firma y la sesion.
+                                **Everything enters through the API gateway.** This service does
+                                not publish ports and does not validate the JWT: it trusts the
+                                `X-*` headers injected by the gateway after validating the
+                                signature and session.
 
-                                **Los errores son siempre `application/problem+json`** y se
-                                discriminan por el campo `type`, nunca por el status. Los `type`
-                                viven bajo `https://tpi.utn.frc/errors/`.
+                                **Errors are always `application/problem+json`** and are
+                                distinguished by the `type` field, never by status. All `type`
+                                values live under `https://tpi.utn.frc/errors/`.
 
-                                Rutas bajo `/api/users/public/**` son anonimas; el resto exige
-                                un access token vigente."""))
+                                Routes under `/api/users/public/**` are anonymous; all others
+                                require a current access token."""))
                 .components(new Components().addSecuritySchemes(COOKIE_SCHEME,
                         new SecurityScheme()
                                 .type(SecurityScheme.Type.APIKEY)
                                 .in(SecurityScheme.In.COOKIE)
                                 .name(SessionCookieService.ACCESS_COOKIE)
                                 .description("""
-                                        La cookie HttpOnly que deja `POST /api/users/public/auth/2fa/verify`
-                                        (o `/refresh`). Lo valida el GATEWAY, no este servicio.
+                                        The HttpOnly cookie set by `POST /api/users/public/auth/2fa/verify`
+                                        (or `/refresh`). The GATEWAY validates it, not this service.
 
-                                        NO va por header `Authorization`: el gateway rechaza con 401 un
-                                        token de persona que llegue por ahi (decision 3, spec "Sesion en
-                                        Cookies"). Como esta pantalla se abre bajo el mismo origen que la
-                                        API, el navegador manda la cookie solo despues de loguearte aca -
-                                        no hace falta pegar nada en "Authorize".
+                                        It does NOT use the `Authorization` header: the gateway rejects
+                                        a person token arriving there with 401 (decision 3, "Cookie
+                                        Sessions" spec). Since this page is served from the same origin
+                                        as the API, the browser sends the cookie automatically after you
+                                        log in here; there is nothing to paste into "Authorize".
 
-                                        Ojo con dos trampas conocidas al probar desde aca:
-                                        esperar ~4 s despues del login (el gateway cachea el
-                                        estado de sesion 3 s) y que el primer login del stack
-                                        puede dar 503 por BCrypt cost 12 en una JVM fria.""")));
+                                        Be aware of two known pitfalls when testing here: wait about
+                                        4 seconds after login (the gateway caches session state for
+                                        3 seconds), and the stack's first login may return 503 because
+                                        BCrypt cost 12 is slow on a cold JVM.""")));
     }
 
-    /** El nombre del schema reusable del cuerpo de error. */
+    /** The name of the reusable error-body schema. */
     private static final String PROBLEM = "ProblemDetail";
 
     /**
-     * Las respuestas de error que tiene TODO endpoint, agregadas de una vez.
+     * Error responses shared by EVERY endpoint, added in one place.
      *
-     * <p>El contrato de errores es uniforme en el servicio entero
-     * (no-negociable 2): mismo media type, mismo cuerpo, y el cliente ramifica
-     * por {@code type}. Repetir cuatro {@code @ApiResponse} en cada uno de los
-     * ~28 metodos seria copiar 112 veces una decision que se toma una sola vez,
-     * y alcanzaria con que alguien se olvide en el endpoint nuevo para que la
-     * doc diga que ese no falla igual que el resto.
+     * <p>The error contract is uniform across the service (non-negotiable 2):
+     * same media type, same body, and clients branch on {@code type}. Repeating
+     * four {@code @ApiResponse} annotations on each of about 28 methods would
+     * copy a single decision 112 times, and one omission on a new endpoint would
+     * make the documentation claim that it fails differently from the rest.
      *
-     * <p>El 401/403 se agrega SOLO a lo privado. Ponerlo en todo seria mentir
-     * justo en la direccion mas cara: sugiere que una ruta publica puede
-     * contestar 401, que es exactamente lo que el no-negociable 3 prohibe.
+     * <p>401/403 are added ONLY to private routes. Adding them everywhere would
+     * be misleading in the most costly direction: it would suggest that a
+     * public route can return 401, exactly what non-negotiable 3 prohibits.
      */
     @Bean
-    OpenApiCustomizer respuestasDeError(@Value("${app.api.public-path}") String publicPath) {
+    OpenApiCustomizer errorResponses(@Value("${app.api.public-path}") String publicPath) {
         return openApi -> {
             openApi.getComponents().addSchemas(PROBLEM, problemDetailSchema());
 
             openApi.getPaths().forEach((path, item) -> item.readOperations().forEach(op -> {
-                // Hasta un GET sin body puede dar 400: un {id} que no convierte
-                // a UUID entra por el mismo @RestControllerAdvice.
-                completar(op, "400", "Validacion fallida. `type`: `validation`.");
+                // Even a GET without a body can return 400: an {id} that cannot
+                // be converted to UUID goes through the same @RestControllerAdvice.
+                addIfMissing(op, "400", "Validation failed. `type`: `validation`.");
 
-                if (esPrivada(path, publicPath)) {
-                    completar(op, "401", "Sin identidad valida. `type`: `not-authenticated`.");
-                    completar(op, "403",
-                            "Rol insuficiente, o una cuenta frenada por un gate. `type`: "
+                if (isPrivate(path, publicPath)) {
+                    addIfMissing(op, "401", "No valid identity. `type`: `not-authenticated`.");
+                    addIfMissing(op, "403",
+                            "Insufficient role, or an account blocked by a gate. `type`: "
                             + "`access-denied`, `pending-account`, `password-change-required` "
-                            + "u `onboarding-pending`.");
+                            + "or `onboarding-pending`.");
                 }
             }));
         };
     }
 
     /**
-     * El JWKS no lleva el prefijo publico -es una convencion web (RFC 8615), no
-     * del proyecto- pero es anonimo igual: SecurityConfig lo deja pasar con
-     * permitAll. Sin esta excepcion quedaria documentado como si pudiera
-     * contestar 401.
+     * JWKS does not use the public prefix - it is a web convention (RFC 8615),
+     * not a project convention - but it is still anonymous: SecurityConfig
+     * allows it with permitAll. Without this exception it would be documented
+     * as if it could return 401.
      */
-    private boolean esPrivada(String path, String publicPath) {
+    private boolean isPrivate(String path, String publicPath) {
         return !path.startsWith(publicPath) && !path.startsWith("/.well-known");
     }
 
     /**
-     * Rellena el codigo SOLO si el endpoint no lo documento ya.
+     * Adds the status code ONLY if the endpoint has not documented it already.
      *
-     * <p>Esto no es una optimizacion, es correctitud: varios endpoints tienen un
-     * 400 que NO es `validation` -{@code invalid-code} e {@code invalid-link}
-     * tambien son 400- y describirlo es justamente lo que hace util la pagina.
-     * Un {@code addApiResponse} a secas los pisaria, porque el customizer corre
-     * DESPUES de que springdoc leyo las anotaciones, y la doc diria "validacion
-     * fallida" en el endpoint donde el 400 significa "el enlace vencio".
+     * <p>This is not an optimization; it is correctness. Several endpoints have
+     * a 400 that is NOT `validation` - {@code invalid-code} and
+     * {@code invalid-link} are also 400 - and describing that distinction is
+     * what makes the page useful. An unconditional {@code addApiResponse} would
+     * overwrite them because the customizer runs AFTER springdoc reads the
+     * annotations, and the documentation would say "validation failed" where
+     * 400 actually means "the link expired".
      */
-    private void completar(io.swagger.v3.oas.models.Operation op, String codigo, String descripcion) {
-        if (op.getResponses().get(codigo) == null) {
-            op.getResponses().addApiResponse(codigo, problema(descripcion));
+    private void addIfMissing(io.swagger.v3.oas.models.Operation op, String code, String description) {
+        if (op.getResponses().get(code) == null) {
+            op.getResponses().addApiResponse(code, problemResponse(description));
         }
     }
 
-    private ApiResponse problema(String descripcion) {
+    private ApiResponse problemResponse(String description) {
         return new ApiResponse()
-                .description(descripcion)
+                .description(description)
                 .content(new Content().addMediaType("application/problem+json",
                         new MediaType().schema(new Schema<>().$ref("#/components/schemas/" + PROBLEM))));
     }
@@ -170,18 +172,18 @@ public class OpenApiConfig {
     private Schema<?> problemDetailSchema() {
         ObjectSchema schema = new ObjectSchema();
         schema.description("""
-                RFC 7807. El cliente ramifica por `type`, NUNCA por el status: dos
-                errores con el mismo 403 pueden necesitar pantallas distintas.
-                Todos los `type` cuelgan de `https://tpi.utn.frc/errors/`.""");
+                RFC 7807. Clients branch on `type`, NEVER on status: two errors
+                with the same 403 may require different screens. All `type`
+                values live under `https://tpi.utn.frc/errors/`.""");
         schema.properties(Map.of(
                 "type", new StringSchema()
-                        .description("La identidad del error. Es el campo por el que se ramifica.")
+                        .description("The error identity. This is the field clients branch on.")
                         .example("https://tpi.utn.frc/errors/invalid-credentials"),
-                "title", new StringSchema().example("Credenciales invalidas"),
+                "title", new StringSchema().example("Invalid credentials"),
                 "status", new Schema<Integer>().type("integer").format("int32").example(401),
-                "detail", new StringSchema().example("El email o la contraseña no coinciden."),
+                "detail", new StringSchema().example("The e-mail address or password does not match."),
                 "instance", new StringSchema()
-                        .description("El path del request que fallo.")
+                        .description("The path of the failed request.")
                         .example("/api/users/public/auth/login")));
         return schema;
     }

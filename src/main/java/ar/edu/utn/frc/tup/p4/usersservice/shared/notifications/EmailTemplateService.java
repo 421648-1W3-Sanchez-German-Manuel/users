@@ -11,7 +11,7 @@ import java.util.Map;
 @Service
 public class EmailTemplateService {
 
-    public record MailArmado(String asunto, String html) {
+    public record RenderedEmail(String subject, String html) {
     }
 
     private static final Locale ES_AR = Locale.forLanguageTag("es-AR");
@@ -24,11 +24,11 @@ public class EmailTemplateService {
         this.messages = messages;
     }
 
-    public MailArmado render(EmailType tipo, Map<String, Object> vars) {
+    public RenderedEmail render(EmailType type, Map<String, Object> variables) {
         Context context = new Context(ES_AR);
-        context.setVariables(vars);
-        String html = engine.process(tipo.template(), context);
-        String subject = messages.getMessage(tipo.subjectKey(), null, ES_AR);
-        return new MailArmado(subject, html);
+        context.setVariables(variables);
+        String html = engine.process(type.template(), context);
+        String subject = messages.getMessage(type.subjectKey(), null, ES_AR);
+        return new RenderedEmail(subject, html);
     }
 }

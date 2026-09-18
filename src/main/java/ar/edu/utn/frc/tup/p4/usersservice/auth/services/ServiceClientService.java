@@ -30,7 +30,7 @@ public class ServiceClientService {
     }
 
     @Transactional(readOnly = true)
-    public String emitirServicio(String clientId, String secret, String scope, String audience) {
+    public String issueServiceToken(String clientId, String secret, String scope, String audience) {
         var client = repository.findByClientIdAndDeletedAtIsNull(clientId)
                 .filter(candidate -> encoder.matches(secret, candidate.getSecretHash()))
                 .orElseThrow(ApiException::invalidCredentials);
@@ -52,15 +52,15 @@ public class ServiceClientService {
                 throw ApiException.validation(
                         "Scope '" + requestedScope + "' is not allowed for this client.");
             }
-            if (!ScopeCatalog.esEmitible(requestedScope)) {
+            if (!ScopeCatalog.isIssuable(requestedScope)) {
                 throw ApiException.validation(
                         "Scope '" + requestedScope + "' cannot be issued with client_credentials. Issuable scopes: "
-                                + ScopeCatalog.emitibles());
+                                + ScopeCatalog.issuableScopes());
             }
         }
 
         Set<String> destinations = requestedScopes.stream()
-                .map(ScopeCatalog::audienceDe)
+                .map(ScopeCatalog::audienceFor)
                 .collect(Collectors.toSet());
         if (destinations.size() > 1) {
             throw ApiException.validation(
@@ -75,7 +75,7 @@ public class ServiceClientService {
                             + derivedAudience + "'.");
         }
 
-        return tokens.firmarServicio(
-                TokenClaims.paraServicio(clientId, audience, requestedScopes).build());
+        return tokens.signServiceToken(
+                TokenClaims.forService(clientId, audience, requestedScopes).build());
     }
 }

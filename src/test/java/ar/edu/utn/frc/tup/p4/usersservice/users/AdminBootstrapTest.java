@@ -31,39 +31,39 @@ class AdminBootstrapTest {
         });
         when(repo.saveAndFlush(any())).thenAnswer(inv -> inv.getArgument(0));
         return new AdminBootstrap(repo, encoder, tx,
-                "admin@frc.utn.edu.ar", password, "Admin", "Inicial", "v1");
+                "admin@frc.utn.edu.ar", password, "Admin", "Initial", "v1");
     }
 
     @Test
-    void crea_un_ADMIN_obligado_a_cambiar_la_password() {
+    void creates_an_ADMIN_required_to_change_the_password() {
         when(repo.countByRoleAndDeletedAtIsNull(Role.ADMIN)).thenReturn(0L);
         when(repo.findByEmailAndDeletedAtIsNull(any())).thenReturn(Optional.empty());
 
-        bootstrap("passwordvalida1").run(null);
+        bootstrap("validpassword1").run(null);
 
         verify(repo).saveAndFlush(any());
     }
 
     @Test
-    void no_hace_nada_si_ya_hay_un_ADMIN_activo() {
+    void does_nothing_when_an_active_ADMIN_already_exists() {
         when(repo.countByRoleAndDeletedAtIsNull(Role.ADMIN)).thenReturn(1L);
-        bootstrap("passwordvalida1").run(null);
+        bootstrap("validpassword1").run(null);
         verify(repo, never()).saveAndFlush(any());
     }
 
     @Test
-    void una_password_floja_del_entorno_hace_fallar_el_arranque() {
+    void a_weak_environment_password_makes_startup_fail() {
         when(repo.countByRoleAndDeletedAtIsNull(Role.ADMIN)).thenReturn(0L);
         when(repo.findByEmailAndDeletedAtIsNull(any())).thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> bootstrap("corta").run(null))
+        assertThatThrownBy(() -> bootstrap("short").run(null))
                 .isInstanceOf(ApiException.class)
                 .hasMessageContaining("12 characters");
         verify(repo, never()).saveAndFlush(any());
     }
 
     @Test
-    void sin_password_configurada_genera_una_que_cumple_la_politica() {
+    void a_missing_configured_password_generates_one_that_meets_the_policy() {
         when(repo.countByRoleAndDeletedAtIsNull(Role.ADMIN)).thenReturn(0L);
         when(repo.findByEmailAndDeletedAtIsNull(any())).thenReturn(Optional.empty());
 
@@ -73,11 +73,11 @@ class AdminBootstrapTest {
     }
 
     @Test
-    @Disabled("espera L3 · T6 AccountEventPublisher / T7 NotificationEventPublisher")
-    void el_alta_del_ADMIN_inicial_deja_ADMIN_INICIAL_CREADO_en_el_outbox() {
-        // TODO: cuando L3 provea AccountEventPublisher, verificar que
-        // AdminBootstrap escribe un OutboxEvent con topic "auditoria"
-        // y payload conteniendo "ADMIN_INICIAL_CREADO" DENTRO de tx.execute.
-        // OutboxRepository es de L1 y ya existe.
+    @Disabled("waiting for L3 T6 AccountEventPublisher / T7 NotificationEventPublisher")
+    void initial_ADMIN_creation_leaves_ADMIN_INICIAL_CREADO_in_the_outbox() {
+        // TODO: when L3 provides AccountEventPublisher, verify that
+        // AdminBootstrap writes an OutboxEvent with topic "auditoria"
+        // and a payload containing "ADMIN_INICIAL_CREADO" INSIDE tx.execute.
+        // OutboxRepository belongs to L1 and already exists.
     }
 }

@@ -2,13 +2,13 @@ package ar.edu.utn.frc.tup.p4.usersservice.auth.twofactor;
 
 import java.util.UUID;
 
-/** Strategy: sumar TOTP despues no toca el login. */
+/** Strategy interface that allows adding TOTP later without changing the login flow. */
 public interface SecondFactorProvider {
     /**
-     * Genera el desafio y lo despacha. NO devuelve el code: el segundo factor
-     * solo tiene que existir en el mail y en Redis. Los tests lo capturan del
-     * mail (TestOtpSpy), no de este contrato.
+     * Generates and dispatches the challenge. It does NOT return the code: the
+     * second factor must exist only in the email and Redis. Tests capture it from
+     * the email (TestOtpSpy), not from this contract.
      */
-    void generarDesafio(UUID userId, String email, String firstNames);
-    void verificar(UUID userId, String code);
+    void generateChallenge(UUID userId, String email, String firstNames);
+    void verify(UUID userId, String code);
 }

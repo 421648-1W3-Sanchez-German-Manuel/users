@@ -10,7 +10,7 @@ import org.springframework.web.bind.annotation.RestController;
 import java.util.Map;
 
 /** Publishes public verification keys at the standard RFC 8615 location. */
-@Tag(name = "JWKS", description = "Claves publicas de verificacion de firma.")
+@Tag(name = "JWKS", description = "Public signature verification keys.")
 @RestController
 public class JwksController {
 
@@ -20,23 +20,22 @@ public class JwksController {
         this.keys = keys;
     }
 
-    @Operation(summary = "Claves publicas para verificar la firma de los tokens",
-               description = """
-                       Es de donde el API gateway saca las claves para validar la firma de
-                       cada JWT. Anonimo por definicion: publicar una clave PUBLICA es el
-                       punto.
+    @Operation(summary = "Public keys for verifying token signatures",
+                description = """
+                        The API gateway obtains the keys here to validate each JWT signature.
+                        Anonymous by definition: publishing a PUBLIC key is the purpose.
 
-                       **No lleva el prefijo `/api`**, y no es un olvido: `/.well-known/` es
-                       una convencion web (RFC 8615), no del proyecto. Por eso el gateway
-                       tiene una ruta estatica para este path -la unica ademas del fallback-:
-                       su locator solo genera `/api/{servicio}/**` y sin esa ruta el JWKS
-                       moriria en un 404 del propio gateway.
+                        **It does not use the `/api` prefix**, by design: `/.well-known/` is a
+                        web convention (RFC 8615), not a project convention. The gateway
+                        therefore has a static route for this path, the only one besides the
+                        fallback. Its locator generates only `/api/{service}/**`; without that
+                        route, the gateway itself would return 404 for JWKS.
 
-                       La privada NUNCA sale de aca: se monta como secreto y el servicio se
-                       niega a arrancar si falta.""")
-    @ApiResponse(responseCode = "200", description = "JWKS en el formato de RFC 7517.")
+                        The private key NEVER leaves this service: it is mounted as a secret,
+                        and the service refuses to start if it is missing.""")
+    @ApiResponse(responseCode = "200", description = "JWKS in RFC 7517 format.")
     @GetMapping("/.well-known/jwks.json")
     public Map<String, Object> jwks() {
-        return keys.jwksPublico().toJSONObject();
+        return keys.publicJwks().toJSONObject();
     }
 }

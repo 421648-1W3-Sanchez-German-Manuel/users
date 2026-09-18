@@ -21,14 +21,14 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
- * OJO: esta clase VACIA la tabla `users`, y es el unico lugar del suite que lo
- * hace. La regla que prueba es global (countActiveWithLock(ADMIN) <= 1), asi
- * que no alcanza con emails unicos: la tabla tiene que tener exactamente los
- * ADMIN que este test crea.
+ * WARNING: this class EMPTIES the `users` table, and it is the only place in
+ * the suite that does so. The rule under test is global
+ * (countActiveWithLock(ADMIN) <= 1), so unique emails are not enough: the table
+ * must contain exactly the ADMIN accounts created by this test.
  *
- * La base de datos es UNA, compartida por todas las clases de test y sin
- * limpieza entre ellas. Si tu clase necesita que sus filas sobrevivan a otra
- * clase, no lo va a lograr: no dependas del orden.
+ * There is ONE database, shared by every test class without cleanup between
+ * them. If a class needs its rows to survive another class, it will not work:
+ * do not depend on execution order.
  */
 class AdminRulesIT extends AbstractIntegrationTest {
 
@@ -37,168 +37,168 @@ class AdminRulesIT extends AbstractIntegrationTest {
     @Autowired PasswordEncoder encoder;
 
     private User admin(String email) {
-        User u = User.createAdmin("Ad", "Min", email, encoder.encode("passwordvalida1"), "v1");
-        u.changePassword(encoder.encode("passwordvalida1"));   // clears mustChangePassword
+        User u = User.createAdmin("Ad", "Min", email, encoder.encode("validpassword1"), "v1");
+        u.changePassword(encoder.encode("validpassword1"));   // clears mustChangePassword
         return repo.saveAndFlush(u);
     }
 
-    private User conRol(Role role, String email) {
-        User u = User.create("Nom", "Bre", email, encoder.encode("passwordvalida1"), role, "v1");
+    private User withRole(Role role, String email) {
+        User u = User.create("First", "Last", email, encoder.encode("validpassword1"), role, "v1");
         return repo.saveAndFlush(u);
     }
 
-    private AdminDeactivationRequest confirmacion(String username) {
-        return new AdminDeactivationRequest("passwordvalida1", "123456", username);
+    private AdminDeactivationRequest confirmation(String username) {
+        return new AdminDeactivationRequest("validpassword1", "123456", username);
     }
 
     @Test
-    void no_se_puede_dejar_la_plataforma_sin_ningun_ADMIN() {
+    void the_platform_cannot_be_left_without_an_ADMIN() {
         repo.deleteAll();
-        User unico = admin("solo@utn.edu.ar");
-        assertThatThrownBy(() -> users.deactivate(unico.getId(), unico.getId(),
-                confirmacion("solo@utn.edu.ar")))
+        User onlyAdmin = admin("only@utn.edu.ar");
+        assertThatThrownBy(() -> users.deactivate(onlyAdmin.getId(), onlyAdmin.getId(),
+                confirmation("only@utn.edu.ar")))
                 .isInstanceOf(ApiException.class);
     }
 
     @Test
-    void un_ADMIN_no_puede_darse_de_baja_a_si_mismo() {
-        admin("otro@utn.edu.ar");
-        User a = admin("auto@utn.edu.ar");
-        assertThatThrownBy(() -> users.deactivate(a.getId(), a.getId(), confirmacion("auto@utn.edu.ar")))
+    void an_ADMIN_cannot_deactivate_itself() {
+        admin("other@utn.edu.ar");
+        User a = admin("self@utn.edu.ar");
+        assertThatThrownBy(() -> users.deactivate(a.getId(), a.getId(), confirmation("self@utn.edu.ar")))
                 .isInstanceOf(ApiException.class);
     }
 
     @Test
-    void la_baja_de_ADMIN_exige_confirmacion_escrita_del_username() {
+    void ADMIN_deactivation_requires_written_username_confirmation() {
         User actor = admin("act@utn.edu.ar");
-        User objetivo = admin("obj@utn.edu.ar");
-        assertThatThrownBy(() -> users.deactivate(actor.getId(), objetivo.getId(),
-                confirmacion("escrito-mal@utn.edu.ar")))
+        User target = admin("target@utn.edu.ar");
+        assertThatThrownBy(() -> users.deactivate(actor.getId(), target.getId(),
+                confirmation("wrongly-written@utn.edu.ar")))
                 .isInstanceOf(ApiException.class);
 
-        users.deactivate(actor.getId(), objetivo.getId(), confirmacion("obj@utn.edu.ar"));
-        assertThat(repo.findById(objetivo.getId()))
+        users.deactivate(actor.getId(), target.getId(), confirmation("target@utn.edu.ar"));
+        assertThat(repo.findById(target.getId()))
                 .get().extracting(User::getAccountStatus).isEqualTo(AccountStatus.DEACTIVATED);
     }
 
     @Test
-    void dos_bajas_CONCURRENTES_no_pueden_dejar_cero_ADMIN() throws Exception {
+    void two_CONCURRENT_deactivations_cannot_leave_zero_ADMIN_accounts() throws Exception {
         repo.deleteAll();
         User a = admin("c1@utn.edu.ar");
         User b = admin("c2@utn.edu.ar");
         User actor = admin("c3@utn.edu.ar");
 
         var pool = Executors.newFixedThreadPool(2);
-        var listos = new CountDownLatch(2);
-        var arrancar = new CountDownLatch(1);
-        AtomicInteger exitos = new AtomicInteger();
+        var ready = new CountDownLatch(2);
+        var start = new CountDownLatch(1);
+        AtomicInteger successes = new AtomicInteger();
 
-        for (User objetivo : List.of(a, b)) {
+        for (User target : List.of(a, b)) {
             pool.submit(() -> {
-                listos.countDown();
+                ready.countDown();
                 try {
-                    arrancar.await();
-                    users.deactivate(actor.getId(), objetivo.getId(),
-                            confirmacion(objetivo.getEmail()));
-                    exitos.incrementAndGet();
+                    start.await();
+                    users.deactivate(actor.getId(), target.getId(),
+                            confirmation(target.getEmail()));
+                    successes.incrementAndGet();
                 } catch (Exception ignored) { }
             });
         }
-        listos.await();
-        arrancar.countDown();
+        ready.await();
+        start.countDown();
         pool.shutdown();
         pool.awaitTermination(30, TimeUnit.SECONDS);
 
         assertThat(repo.countByRoleAndDeletedAtIsNull(Role.ADMIN)).isGreaterThanOrEqualTo(1);
-        assertThat(exitos.get()).isLessThanOrEqualTo(2);
+        assertThat(successes.get()).isLessThanOrEqualTo(2);
     }
 
     @Test
-    void cambiar_el_rol_del_ultimo_ADMIN_tambien_se_bloquea() {
+    void changing_the_last_ADMIN_role_is_also_blocked() {
         repo.deleteAll();
-        User unico = admin("role@utn.edu.ar");
-        assertThatThrownBy(() -> users.changeRole(unico.getId(), unico.getId(), Role.PROFESSOR))
+        User onlyAdmin = admin("role@utn.edu.ar");
+        assertThatThrownBy(() -> users.changeRole(onlyAdmin.getId(), onlyAdmin.getId(), Role.PROFESSOR))
                 .isInstanceOf(ApiException.class);
     }
 
     @Test
-    void un_GESTOR_no_puede_dar_de_baja_a_un_ADMIN() {
-        User gestor = conRol(Role.GESTOR, "gestor-baja-admin@utn.edu.ar");
-        User objetivo = admin("obj-baja-admin@utn.edu.ar");
-        assertThatThrownBy(() -> users.deactivate(gestor.getId(), objetivo.getId(),
-                confirmacion("obj-baja-admin@utn.edu.ar")))
+    void a_GESTOR_cannot_deactivate_an_ADMIN() {
+        User manager = withRole(Role.GESTOR, "manager-deactivate-admin@utn.edu.ar");
+        User target = admin("target-deactivate-admin@utn.edu.ar");
+        assertThatThrownBy(() -> users.deactivate(manager.getId(), target.getId(),
+                confirmation("target-deactivate-admin@utn.edu.ar")))
                 .isInstanceOf(ApiException.class);
     }
 
     @Test
-    void un_GESTOR_no_puede_dar_de_baja_a_un_STUDENT() {
-        User gestor = conRol(Role.GESTOR, "gestor-baja-student@utn.edu.ar");
-        User objetivo = conRol(Role.STUDENT, "obj-baja-student@utn.edu.ar");
-        assertThatThrownBy(() -> users.deactivate(gestor.getId(), objetivo.getId(),
+    void a_GESTOR_cannot_deactivate_a_STUDENT() {
+        User manager = withRole(Role.GESTOR, "manager-deactivate-student@utn.edu.ar");
+        User target = withRole(Role.STUDENT, "target-deactivate-student@utn.edu.ar");
+        assertThatThrownBy(() -> users.deactivate(manager.getId(), target.getId(),
                 new AdminDeactivationRequest("na", "na", "na")))
                 .isInstanceOf(ApiException.class);
     }
 
     @Test
-    void un_GESTOR_puede_dar_de_baja_a_un_PROFESSOR_o_GESTOR() {
-        User gestor = conRol(Role.GESTOR, "gestor-baja-ok@utn.edu.ar");
-        User profesor = conRol(Role.PROFESSOR, "obj-baja-prof@utn.edu.ar");
-        User otroGestor = conRol(Role.GESTOR, "obj-baja-gestor@utn.edu.ar");
+    void a_GESTOR_can_deactivate_a_PROFESSOR_or_GESTOR() {
+        User manager = withRole(Role.GESTOR, "manager-deactivate-ok@utn.edu.ar");
+        User professor = withRole(Role.PROFESSOR, "target-deactivate-prof@utn.edu.ar");
+        User otherManager = withRole(Role.GESTOR, "target-deactivate-manager@utn.edu.ar");
 
-        users.deactivate(gestor.getId(), profesor.getId(), new AdminDeactivationRequest("na", "na", "na"));
-        users.deactivate(gestor.getId(), otroGestor.getId(), new AdminDeactivationRequest("na", "na", "na"));
+        users.deactivate(manager.getId(), professor.getId(), new AdminDeactivationRequest("na", "na", "na"));
+        users.deactivate(manager.getId(), otherManager.getId(), new AdminDeactivationRequest("na", "na", "na"));
 
-        assertThat(repo.findById(profesor.getId()))
+        assertThat(repo.findById(professor.getId()))
                 .get().extracting(User::getAccountStatus).isEqualTo(AccountStatus.DEACTIVATED);
-        assertThat(repo.findById(otroGestor.getId()))
+        assertThat(repo.findById(otherManager.getId()))
                 .get().extracting(User::getAccountStatus).isEqualTo(AccountStatus.DEACTIVATED);
     }
 
     @Test
-    void un_GESTOR_no_puede_otorgar_ni_tocar_el_rol_ADMIN() {
-        User gestor = conRol(Role.GESTOR, "gestor-rol-admin@utn.edu.ar");
-        User admin = admin("obj-rol-admin@utn.edu.ar");
-        User profesor = conRol(Role.PROFESSOR, "obj-rol-a-admin@utn.edu.ar");
+    void a_GESTOR_cannot_grant_or_modify_the_ADMIN_role() {
+        User manager = withRole(Role.GESTOR, "manager-role-admin@utn.edu.ar");
+        User admin = admin("target-role-admin@utn.edu.ar");
+        User professor = withRole(Role.PROFESSOR, "target-role-to-admin@utn.edu.ar");
 
-        assertThatThrownBy(() -> users.changeRole(gestor.getId(), admin.getId(), Role.PROFESSOR))
+        assertThatThrownBy(() -> users.changeRole(manager.getId(), admin.getId(), Role.PROFESSOR))
                 .isInstanceOf(ApiException.class);
-        assertThatThrownBy(() -> users.changeRole(gestor.getId(), profesor.getId(), Role.ADMIN))
-                .isInstanceOf(ApiException.class);
-    }
-
-    @Test
-    void un_GESTOR_no_puede_cambiar_el_rol_de_un_STUDENT() {
-        User gestor = conRol(Role.GESTOR, "gestor-rol-student@utn.edu.ar");
-        User student = conRol(Role.STUDENT, "obj-rol-student@utn.edu.ar");
-
-        assertThatThrownBy(() -> users.changeRole(gestor.getId(), student.getId(), Role.PROFESSOR))
+        assertThatThrownBy(() -> users.changeRole(manager.getId(), professor.getId(), Role.ADMIN))
                 .isInstanceOf(ApiException.class);
     }
 
     @Test
-    void un_GESTOR_puede_mover_cuentas_entre_PROFESSOR_y_GESTOR() {
-        User gestor = conRol(Role.GESTOR, "gestor-rol-ok@utn.edu.ar");
-        User profesor = conRol(Role.PROFESSOR, "obj-rol-ok@utn.edu.ar");
+    void a_GESTOR_cannot_change_a_STUDENT_role() {
+        User manager = withRole(Role.GESTOR, "manager-role-student@utn.edu.ar");
+        User student = withRole(Role.STUDENT, "target-role-student@utn.edu.ar");
 
-        users.changeRole(gestor.getId(), profesor.getId(), Role.GESTOR);
+        assertThatThrownBy(() -> users.changeRole(manager.getId(), student.getId(), Role.PROFESSOR))
+                .isInstanceOf(ApiException.class);
+    }
 
-        assertThat(repo.findById(profesor.getId()))
+    @Test
+    void a_GESTOR_can_move_accounts_between_PROFESSOR_and_GESTOR() {
+        User manager = withRole(Role.GESTOR, "manager-role-ok@utn.edu.ar");
+        User professor = withRole(Role.PROFESSOR, "target-role-ok@utn.edu.ar");
+
+        users.changeRole(manager.getId(), professor.getId(), Role.GESTOR);
+
+        assertThat(repo.findById(professor.getId()))
                 .get().extracting(User::getRole).isEqualTo(Role.GESTOR);
     }
 
     @Test
-    void el_listar_de_un_GESTOR_no_incluye_ADMIN_ni_STUDENT() {
-        User gestor = conRol(Role.GESTOR, "gestor-listar@utn.edu.ar");
-        User otroGestor = conRol(Role.GESTOR, "obj-listar-gestor@utn.edu.ar");
-        User profesor = conRol(Role.PROFESSOR, "obj-listar-prof@utn.edu.ar");
-        admin("obj-listar-admin@utn.edu.ar");
-        conRol(Role.STUDENT, "obj-listar-student@utn.edu.ar");
+    void a_GESTOR_list_does_not_include_ADMIN_or_STUDENT_accounts() {
+        User manager = withRole(Role.GESTOR, "manager-list@utn.edu.ar");
+        User otherManager = withRole(Role.GESTOR, "target-list-manager@utn.edu.ar");
+        User professor = withRole(Role.PROFESSOR, "target-list-prof@utn.edu.ar");
+        admin("target-list-admin@utn.edu.ar");
+        withRole(Role.STUDENT, "target-list-student@utn.edu.ar");
 
-        List<UserListItemResponse> listado = users.listar(gestor.getId());
+        List<UserListItemResponse> usersList = users.list(manager.getId());
 
-        assertThat(listado).extracting(UserListItemResponse::role)
+        assertThat(usersList).extracting(UserListItemResponse::role)
                 .containsOnly(Role.PROFESSOR, Role.GESTOR);
-        assertThat(listado).extracting(UserListItemResponse::id)
-                .contains(otroGestor.getId().toString(), profesor.getId().toString());
+        assertThat(usersList).extracting(UserListItemResponse::id)
+                .contains(otherManager.getId().toString(), professor.getId().toString());
     }
 }

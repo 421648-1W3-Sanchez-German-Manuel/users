@@ -23,15 +23,15 @@ class OnboardingWithoutAvatarIT extends AbstractIntegrationTest {
     @Autowired UserService users;
     @Autowired UserRepository repo;
 
-    private UUID activo() {
+    private UUID activeUserId() {
         User u = User.create("Ana", "P", "onb-" + UUID.randomUUID() + "@utn.edu.ar", "$2a$12$h", Role.STUDENT, "v1");
         u.forceStatusForTest(AccountStatus.ACTIVE);
         return repo.saveAndFlush(u).getId();
     }
 
     @Test
-    void el_onboarding_SIN_avatarRef_cierra_el_gate_3() {
-        UUID id = activo();
+    void onboarding_WITHOUT_avatarRef_closes_gate_3() {
+        UUID id = activeUserId();
         assertThat(users.me(id).firstLogin()).isTrue();
 
         users.completeOnboarding(id, "anaperez", null, true);
@@ -43,15 +43,15 @@ class OnboardingWithoutAvatarIT extends AbstractIntegrationTest {
     }
 
     @Test
-    void si_viene_avatarRef_se_guarda() {
-        UUID id = activo();
+    void avatarRef_is_stored_when_provided() {
+        UUID id = activeUserId();
         users.completeOnboarding(id, "anaperez", "avatars/ana.png", true);
         assertThat(users.me(id).avatarRef()).isEqualTo("avatars/ana.png");
     }
 
     @Test
-    void GET_me_devuelve_los_cuatro_flags_que_el_frontend_necesita() {
-        var me = users.me(activo());
+    void GET_me_returns_the_four_flags_needed_by_the_frontend() {
+        var me = users.me(activeUserId());
         assertThat(me.accountStatus()).isNotNull();
         assertThat(me.mustChangePassword()).isFalse();
         assertThat(me.firstLogin()).isTrue();

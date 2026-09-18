@@ -43,22 +43,22 @@ public class RedisTokenStore implements TokenStore {
     }
 
     @Override
-    public void guardarSesion(UUID userId, String sid) {
+    public void saveSession(UUID userId, String sid) {
         redis.opsForValue().set(SESSION_PREFIX + userId, sid);
     }
 
     @Override
-    public Optional<String> sidDe(UUID userId) {
+    public Optional<String> findSessionId(UUID userId) {
         return Optional.ofNullable(redis.opsForValue().get(SESSION_PREFIX + userId));
     }
 
     @Override
-    public void borrarSesion(UUID userId) {
+    public void deleteSession(UUID userId) {
         redis.delete(SESSION_PREFIX + userId);
     }
 
     @Override
-    public void guardarRefresh(String jti, RefreshData data, Duration ttl) {
+    public void saveRefresh(String jti, RefreshData data, Duration ttl) {
         redis.opsForValue().set(REFRESH_PREFIX + jti, write(data), ttl);
     }
 
@@ -69,12 +69,12 @@ public class RedisTokenStore implements TokenStore {
     }
 
     @Override
-    public void revocarRefresh(String jti) {
+    public void revokeRefresh(String jti) {
         redis.delete(REFRESH_PREFIX + jti);
     }
 
     @Override
-    public void revocarFamilia(String familyId) {
+    public void revokeFamily(String familyId) {
         redis.opsForValue().set(
                 REVOKED_FAMILY_PREFIX + familyId,
                 "1",
@@ -82,31 +82,31 @@ public class RedisTokenStore implements TokenStore {
     }
 
     @Override
-    public boolean familiaRevocada(String familyId) {
+    public boolean isFamilyRevoked(String familyId) {
         return Boolean.TRUE.equals(redis.hasKey(REVOKED_FAMILY_PREFIX + familyId));
     }
 
     @Override
-    public int incrementarFallos(String key, Duration ventana) {
+    public int incrementFailures(String key, Duration window) {
         Long failures = redis.execute(
                 INCR_WITH_TTL,
                 List.of(LOGIN_FAILURE_PREFIX + key),
-                String.valueOf(ventana.toSeconds()));
+                String.valueOf(window.toSeconds()));
         return failures == null ? 0 : failures.intValue();
     }
 
     @Override
-    public void limpiarFallos(String key) {
+    public void clearFailures(String key) {
         redis.delete(LOGIN_FAILURE_PREFIX + key);
     }
 
     @Override
-    public int incrementarUso(String bucket, String key, Duration ventana) {
-        Long usos = redis.execute(
+    public int incrementUsage(String bucket, String key, Duration window) {
+        Long usage = redis.execute(
                 INCR_WITH_TTL,
                 List.of(RATE_LIMIT_PREFIX + bucket + ":" + key),
-                String.valueOf(ventana.toSeconds()));
-        return usos == null ? 0 : usos.intValue();
+                String.valueOf(window.toSeconds()));
+        return usage == null ? 0 : usage.intValue();
     }
 
     private String write(RefreshData data) {

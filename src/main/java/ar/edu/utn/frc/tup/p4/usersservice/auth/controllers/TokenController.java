@@ -14,8 +14,8 @@ import org.springframework.web.bind.annotation.RestController;
 
 import java.util.Map;
 
-@Tag(name = "Tokens de servicio",
-     description = "Emision de tokens para OTROS microservicios, no para personas.")
+@Tag(name = "Service tokens",
+     description = "Issues tokens for OTHER microservices, not for people.")
 @RestController
 @RequestMapping("${app.api.public-path}/auth")
 public class TokenController {
@@ -26,35 +26,36 @@ public class TokenController {
         this.clients = clients;
     }
 
-    @Operation(summary = "Emite un token de servicio (client_credentials)",
-               description = """
-                       Para comunicacion MAQUINA a MAQUINA entre microservicios de la
-                       plataforma. Una persona nunca pasa por aca: su camino es
-                       `/auth/login` + `/auth/2fa/verify`.
+    @Operation(summary = "Issues a service token (client_credentials)",
+                description = """
+                        For MACHINE-TO-MACHINE communication between platform microservices.
+                        A person never uses this endpoint; their flow is
+                        `/auth/login` + `/auth/2fa/verify`.
 
-                       El token sale con un `scope` y un `audience`, y el gateway lo traduce
-                       a los headers `X-Service-Id` / `X-Service-Scopes` para el destino.
-                       Vida corta a proposito (`users.jwt.service-ttl`, 5 min por defecto).
+                        The token includes a `scope` and an `audience`, which the gateway
+                        translates into `X-Service-Id` / `X-Service-Scopes` headers for the
+                        destination. It is deliberately short-lived (`users.jwt.service-ttl`,
+                        five minutes by default).
 
-                       `grantType` solo acepta `client_credentials`. Cualquier otro valor es
-                       un 400, no un 501: no es una funcionalidad que falte, es un pedido
-                       que este endpoint no representa.""")
+                        `grantType` accepts only `client_credentials`. Any other value produces
+                        400, not 501: the request is outside this endpoint's contract, rather
+                        than an unimplemented feature.""")
     @ApiResponse(responseCode = "200", description = """
-            Token emitido. El cuerpo trae `accessToken`, `tokenType` (`Bearer`) y
-            `expiresIn` en segundos.""")
+             Token issued. The body contains `accessToken`, `tokenType` (`Bearer`), and
+             `expiresIn` in seconds.""")
     @ApiResponse(responseCode = "400", description = """
-            `type`: `validation`. `grantType` no soportado, `scope` vacio, o un `scope` o
-            `audience` que el cliente no tiene habilitado.""")
+             `type`: `validation`. Unsupported `grantType`, empty `scope`, or a `scope` or
+             `audience` that is not enabled for the client.""")
     @ApiResponse(responseCode = "401", description = """
-            `type`: `invalid-credentials`. `clientId` o `clientSecret` incorrectos. Misma
-            respuesta para un cliente inexistente que para un secret equivocado.""")
+             `type`: `invalid-credentials`. Incorrect `clientId` or `clientSecret`. The same
+             response is returned for an unknown client and an incorrect secret.""")
     @PostMapping("/token")
     public Map<String, Object> token(@Valid @RequestBody ClientCredentialsRequest request) {
         if (!"client_credentials".equals(request.grantType())) {
             throw ApiException.validation("Unsupported grantType: " + request.grantType());
         }
 
-        String jwt = clients.emitirServicio(
+        String jwt = clients.issueServiceToken(
                 request.clientId(),
                 request.clientSecret(),
                 request.scope(),

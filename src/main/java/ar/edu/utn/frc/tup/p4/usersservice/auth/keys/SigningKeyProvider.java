@@ -6,7 +6,7 @@ import com.nimbusds.jose.jwk.RSAKey;
 /** Provides mounted signing keys without defining how they are stored. */
 public interface SigningKeyProvider {
 
-    RSAKey claveDeFirma();
+    RSAKey signingKey();
 
-    JWKSet jwksPublico();
+    JWKSet publicJwks();
 }

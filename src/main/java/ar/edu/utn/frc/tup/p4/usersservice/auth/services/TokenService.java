@@ -24,23 +24,23 @@ public class TokenService {
         this.properties = properties;
     }
 
-    public String firmarPersona(TokenClaims claims) {
-        return firmar(claims, properties.accessTtl());
+    public String signPersonToken(TokenClaims claims) {
+        return sign(claims, properties.accessTtl());
     }
 
-    public String firmarServicio(TokenClaims claims) {
-        return firmar(claims, properties.serviceTtl());
+    public String signServiceToken(TokenClaims claims) {
+        return sign(claims, properties.serviceTtl());
     }
 
-    private String firmar(TokenClaims claims, Duration lifetime) {
+    private String sign(TokenClaims claims, Duration lifetime) {
         try {
-            var signingKey = keys.claveDeFirma();
+            var signingKey = keys.signingKey();
             JWSHeader header = new JWSHeader.Builder(JWSAlgorithm.RS256)
                     .keyID(signingKey.getKeyID())
                     .build();
             SignedJWT jwt = new SignedJWT(
                     header,
-                    claims.aClaimsSet(properties.issuer(), lifetime));
+                    claims.toClaimsSet(properties.issuer(), lifetime));
             jwt.sign(new RSASSASigner(signingKey.toPrivateKey()));
             return jwt.serialize();
         } catch (JOSEException exception) {

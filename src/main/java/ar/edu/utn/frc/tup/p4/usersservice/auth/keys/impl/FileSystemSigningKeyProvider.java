@@ -89,12 +89,12 @@ public class FileSystemSigningKeyProvider implements SigningKeyProvider {
     }
 
     @Override
-    public RSAKey claveDeFirma() {
+    public RSAKey signingKey() {
         return signingKey;
     }
 
     @Override
-    public JWKSet jwksPublico() {
+    public JWKSet publicJwks() {
         return publicJwks.toPublicJWKSet();
     }
 }

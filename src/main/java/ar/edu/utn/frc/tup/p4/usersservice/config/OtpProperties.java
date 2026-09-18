@@ -7,7 +7,7 @@ import java.time.Duration;
 
 @ConfigurationProperties(prefix = "users.otp")
 public record OtpProperties(
-        @Name("activation-ttl") Duration activacionTtl,
-        @Name("two-factor-ttl") Duration dosfaTtl,
-        @Name("max-attempts") int maxIntentos) {
+        @Name("activation-ttl") Duration activationTtl,
+        @Name("two-factor-ttl") Duration twoFactorTtl,
+        @Name("max-attempts") int maxAttempts) {
 }
