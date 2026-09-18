@@ -84,7 +84,8 @@ public class AuthPrivateController {
                         `/me/onboarding`.
 
                         **Changing the password CLOSES the session.** The user must sign in again;
-                        the old tokens are no longer valid.""")
+                        the old tokens are no longer valid. The session cookies are cleared
+                        in this same response, so the browser stops sending them.""")
     @ApiResponse(responseCode = "200", description = "Password changed. The session is closed.")
     @ApiResponse(responseCode = "401", description = """
             `type`: `invalid-credentials` if `currentPassword` does not match, or
@@ -92,9 +93,18 @@ public class AuthPrivateController {
     @PostMapping("/password/change")
     @SkipAccountGate({SkipAccountGate.Gate.PASSWORD, SkipAccountGate.Gate.ONBOARDING})
     public void changePassword(@AuthenticationPrincipal GatewayPrincipal p,
-                               @Valid @RequestBody PasswordChangeRequest req) {
+                               @Valid @RequestBody PasswordChangeRequest req,
+                               HttpServletResponse response) {
         requirePerson(p);
         passwordService.change(p.id(), req.currentPassword(), req.newPassword());
+        // Same as logout: the session is dead from this point on, so the
+        // browser must drop the cookies. Otherwise the stale fu_at keeps
+        // riding along on every request — including the NEXT login attempt on
+        // a public route — and the gateway rejects it with session-closed
+        // before it ever reaches the login logic. The user can only escape by
+        // wiping cookies by hand.
+        response.addHeader(HttpHeaders.SET_COOKIE, cookies.clearAccess().toString());
+        response.addHeader(HttpHeaders.SET_COOKIE, cookies.clearRefresh().toString());
     }
 
     /**
