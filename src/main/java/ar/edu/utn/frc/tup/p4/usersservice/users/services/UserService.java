@@ -1,5 +1,9 @@
 package ar.edu.utn.frc.tup.p4.usersservice.users.services;
 
+import ar.edu.utn.frc.tup.p4.usersservice.auth.store.TokenStore;
+import ar.edu.utn.frc.tup.p4.usersservice.auth.twofactor.SecondFactorProvider;
+import ar.edu.utn.frc.tup.p4.usersservice.config.KafkaTopicsProperties;
+import ar.edu.utn.frc.tup.p4.usersservice.shared.events.AccountEventPublisher;
 import ar.edu.utn.frc.tup.p4.usersservice.shared.web.ApiException;
 import ar.edu.utn.frc.tup.p4.usersservice.users.PasswordPolicy;
 import ar.edu.utn.frc.tup.p4.usersservice.users.dto.*;
@@ -14,6 +18,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 import java.util.Locale;
+import java.util.Objects;
 import java.util.UUID;
 
 @Service
@@ -22,15 +27,40 @@ public class UserService {
     private final UserRepository repo;
     private final CredentialService credentials;
     private final PasswordEncoder encoder;
+    private final SecondFactorProvider secondFactor;
+    private final TokenStore tokens;
+    private final AccountEventPublisher events;
+    private final KafkaTopicsProperties topics;
     private final String currentTermsVersion;
 
     public UserService(UserRepository repo, CredentialService credentials,
-                       PasswordEncoder encoder,
+                       PasswordEncoder encoder, SecondFactorProvider secondFactor,
+                       TokenStore tokens, AccountEventPublisher events,
+                       KafkaTopicsProperties topics,
                        @Value("${users.legal.terms-version}") String currentTermsVersion) {
         this.repo = repo;
         this.credentials = credentials;
         this.encoder = encoder;
+        this.secondFactor = secondFactor;
+        this.tokens = tokens;
+        this.events = events;
+        this.topics = topics;
         this.currentTermsVersion = currentTermsVersion;
+    }
+
+    /**
+     * RF-ROL-06 step 4 - the audit event of a deactivation, on the topic this
+     * service owns. Nobody else reads the users table, so without this event
+     * the rest of the platform never learns that an account is gone.
+     */
+    public record AccountDeactivatedPayload(String userId, String role, String deactivatedBy,
+                                            String deactivatedAt) {
+        public AccountDeactivatedPayload {
+            Objects.requireNonNull(userId, "userId is required");
+            Objects.requireNonNull(role, "role is required");
+            Objects.requireNonNull(deactivatedBy, "deactivatedBy is required");
+            Objects.requireNonNull(deactivatedAt, "deactivatedAt is required");
+        }
     }
 
     @Transactional(readOnly = true)
@@ -79,6 +109,16 @@ public class UserService {
     /**
      * It crosses both modules with NO network in between: the reinforced confirmation
      * (password again + 2FA) belongs to auth/, the business rules to users/.
+     *
+     * <p>SPEC §16.3 scopes the reinforcement to deactivating an ADMIN, which is
+     * why it lives inside that branch. The request carries the three fields for
+     * every target because the screen is one, but for a non-ADMIN target only
+     * the role rules apply.
+     *
+     * <p>The second factor is verified HERE and not in a filter: the code is
+     * single-use, so consuming it has to happen in the same transaction that
+     * performs the deactivation. Verifying it earlier would burn the code on a
+     * request that then fails a business rule.
      */
     @Transactional
     public void deactivate(UUID actorId, UUID targetId, AdminDeactivationRequest req) {
@@ -107,12 +147,38 @@ public class UserService {
                 throw ApiException.invalidCredentials();
             }
 
+            // RF-ROL-06 step 1, second half. The password alone proves nothing
+            // that a stolen session does not already have: the whole point of
+            // the second factor here is that whoever is asking still holds the
+            // ADMIN's mailbox. The challenge is the one the screen triggers
+            // right before this call, through the normal login endpoint.
+            //
+            // The field was in the DTO from day one, @NotBlank, and nothing
+            // ever read it: any six characters passed. The screen collected a
+            // real code and even handled `invalid-code`, an error this service
+            // could not return.
+            secondFactor.verify(actorId, req.twoFactorCode());
+
             // DEC-20 rule 5: the count goes WITH A LOCK, in this same transaction.
             if (repo.countActiveWithLock(Role.ADMIN) <= 1) throw ApiException.lastAdmin();
         }
 
         target.deactivate();
         repo.save(target);
+
+        // DEC-22: deactivation is one of the two deletions of session:{userId}
+        // — the gateway's RedisSessionRepository says so in its own javadoc, and
+        // it was the half that was missing. Without it the person keeps working
+        // with the access token they already hold for up to a full access-ttl
+        // (10 min), because the gateway's AccountStateGuard reads `est` FROM THE
+        // TOKEN, not from this table. It also kills the refresh: AuthService
+        // step 3 rejects a refresh whose session no longer exists.
+        tokens.deleteSession(targetId);
+
+        events.publish(topics.userEvents(), targetId.toString(), "ACCOUNT-DEACTIVATED", 1,
+                "user", targetId,
+                new AccountDeactivatedPayload(targetId.toString(), target.getRole().name(),
+                        actorId.toString(), target.getDeletedAt().toString()));
     }
 
     @Transactional
