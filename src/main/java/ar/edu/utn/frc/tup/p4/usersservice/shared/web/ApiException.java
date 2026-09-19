@@ -125,6 +125,44 @@ public class ApiException extends RuntimeException {
                 .with("retryAfterSeconds", retryAfter.toSeconds());
     }
 
+    public static ApiException providerNotSupported() {
+        return new ApiException(HttpStatus.BAD_REQUEST, ErrorTypes.PROVIDER_NOT_SUPPORTED,
+                "Provider not supported", "That git hosting provider is not available.");
+    }
+
+    public static ApiException invalidLinkState() {
+        return new ApiException(HttpStatus.BAD_REQUEST, ErrorTypes.INVALID_LINK_STATE,
+                "Invalid link state", "The link state is not valid or has expired.");
+    }
+
+    /** DEC-GL-16: never 401 — a crossed callback must not log the person out. */
+    public static ApiException linkUserMismatch() {
+        return new ApiException(HttpStatus.CONFLICT, ErrorTypes.LINK_USER_MISMATCH,
+                "Link user mismatch", "This authorization was started by another session.");
+    }
+
+    /** DEC-GL-06: distinct from provider-account-taken. */
+    public static ApiException providerAlreadyLinked() {
+        return new ApiException(HttpStatus.CONFLICT, ErrorTypes.PROVIDER_ALREADY_LINKED,
+                "Provider already linked", "An active link for that provider already exists.");
+    }
+
+    /** DEC-GL-06: distinct from provider-already-linked. */
+    public static ApiException providerAccountTaken() {
+        return new ApiException(HttpStatus.CONFLICT, ErrorTypes.PROVIDER_ACCOUNT_TAKEN,
+                "Provider account taken", "That provider account is already linked to another user.");
+    }
+
+    public static ApiException providerNotLinked() {
+        return new ApiException(HttpStatus.NOT_FOUND, ErrorTypes.PROVIDER_NOT_LINKED,
+                "Provider not linked", "There is no active link for that provider.");
+    }
+
+    public static ApiException providerUnavailable() {
+        return new ApiException(HttpStatus.BAD_GATEWAY, ErrorTypes.PROVIDER_UNAVAILABLE,
+                "Provider unavailable", "The git hosting provider did not respond.");
+    }
+
     public HttpStatus getStatus() { return status; }
     public URI getType() { return type; }
     public String getTitle() { return title; }
