@@ -128,16 +128,28 @@ public class UserController {
                description = """
                         LOGICAL deactivation: nothing is physically deleted (non-negotiable 6).
 
-                        Requires complete reauthentication in the body: password, 2FA code, and
-                        the manually entered username, because this is a destructive operation on
-                        another person's account.
+                        Requires complete reauthentication in the body, **whatever the target's
+                        role** (`RF-ROL-06`, SPEC §16.3): the current password, a FRESH 2FA code,
+                        and the target's username typed by hand. The code is the one the screen
+                        requests immediately before, and it is single-use — one challenge buys
+                        exactly one deactivation.
+
+                        The reinforcement is about who is ASKING, so it does not depend on the
+                        target: a stolen session deactivating fifty STUDENT accounts is not a
+                        smaller incident than one deactivating a single ADMIN.
 
                         Two distinct defensive layers: the annotation checks the role, and the
                         service checks whether the operation would leave the platform without an
                         active ADMIN or whether a GESTOR is trying to deactivate someone outside
                         the PROFESSOR/GESTOR scope (neither ADMIN nor STUDENT). An ADMIN also cannot
-                        deactivate their own account.""")
+                        deactivate their own account.
+
+                        On success the target's session is closed (`session:{userId}` is deleted,
+                        DEC-22) and an `ACCOUNT-DEACTIVATED` event goes out on `user-events`.""")
     @ApiResponse(responseCode = "200", description = "Account deactivated.")
+    @ApiResponse(responseCode = "400", description = """
+            `type`: `invalid-code`. The 2FA code is wrong or expired. Ask for a new one; five
+            failures within an hour discard the challenge.""")
     @ApiResponse(responseCode = "401", description = "`type`: `invalid-credentials`. Reauthentication failed.")
     @ApiResponse(responseCode = "403", description = "`type`: `access-denied`. A GESTOR attempted to exceed the PROFESSOR/GESTOR scope.")
     @ApiResponse(responseCode = "409", description = """

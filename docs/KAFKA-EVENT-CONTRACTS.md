@@ -43,6 +43,43 @@ Example:
 }
 ```
 
+### ACCOUNT-DEACTIVATED
+
+- Description: published when an account is logically deactivated by an ADMIN
+  or a GESTOR (`RF-ROL-06`, SPEC §16.3 step 4). The row is never deleted: the
+  account moves to `DEACTIVATED` and its session is closed.
+- Event Type: `ACCOUNT-DEACTIVATED`
+- Event Version: `1`
+- Producer: `tema-01-users`
+- Known consumer: none yet. It is published because nobody else reads the
+  `users` table: without it, a subsystem holding its own copy of a person keeps
+  treating a deactivated account as valid.
+- Payload fields:
+  - `userId`: string UUID, required. The deactivated account.
+  - `role`: string, required. Its role at the moment of deactivation
+    (`STUDENT`, `PROFESSOR`, `GESTOR`, `ADMIN`).
+  - `deactivatedBy`: string UUID, required. The operator who performed it. This
+    is the audit trail, and the only record of who did it.
+  - `deactivatedAt`: string ISO-8601 UTC, required.
+
+Example:
+
+```json
+{
+  "eventId": "2f8a1c3e-77b1-4a4f-9a0b-1d2e3f4a5b6c",
+  "eventType": "ACCOUNT-DEACTIVATED",
+  "eventVersion": 1,
+  "timestamp": "2026-09-18T14:05:02.881Z",
+  "producer": "tema-01-users",
+  "payload": {
+    "userId": "5d1e09d8-98e2-4ee7-b763-3cbf096a503a",
+    "role": "STUDENT",
+    "deactivatedBy": "a1b2c3d4-0000-4444-8888-99aabbccddee",
+    "deactivatedAt": "2026-09-18T14:05:02.877Z"
+  }
+}
+```
+
 ## Domain: Notifications
 
 - Topic: `notification-events`

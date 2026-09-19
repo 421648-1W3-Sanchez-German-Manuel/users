@@ -31,7 +31,22 @@ public interface UserRepository extends JpaRepository<User, UUID> {
      * concurrent ADMIN deactivations each count two ADMINs in their own
      * snapshot and both proceed, leaving the platform with none.
      */
+    /**
+     * Returns the ids so the caller can count them. It does NOT
+     * {@code select count(...)}, and that is the entire point: Hibernate emits
+     * no {@code for update} for an aggregate query. It dropped the lock hint
+     * silently, the generated SQL was a plain
+     * {@code select count(u1_0.id) from users ...}, and the method kept the
+     * word "lock" in its name while taking none — so the scenario the javadoc
+     * above describes was live. Two ADMINs deactivating each other both counted
+     * two and both proceeded, leaving zero.
+     *
+     * <p>Selecting rows keeps the {@code for update}, which is what makes the
+     * second transaction wait and then read the post-commit count. The result
+     * set is the active ADMINs of an institution: a handful of rows, so
+     * counting them in Java costs nothing.
+     */
     @Lock(LockModeType.PESSIMISTIC_WRITE)
-    @Query("select count(u) from User u where u.role = :role and u.deletedAt is null")
-    long countActiveWithLock(@Param("role") Role role);
+    @Query("select u.id from User u where u.role = :role and u.deletedAt is null")
+    List<UUID> lockActive(@Param("role") Role role);
 }
