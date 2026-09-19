@@ -55,10 +55,10 @@ class GitProviderLinkRepositoryIT extends AbstractIntegrationTest {
         repo.saveAndFlush(first);
 
         // Same external account again after soft-delete.
-        repo.saveAndFlush(GitProviderLink.create(userId, GitProvider.GITHUB, firstExt, "first"));
-
-        GitProviderLink secondActive = repo.findByUserIdAndProviderAndDeletedAtIsNull(userId, GitProvider.GITHUB)
-                .orElseThrow();
+        // Capture the entity from saveAndFlush: the locked finder requires a
+        // transaction (PESSIMISTIC_WRITE) and this IT must not be @Transactional.
+        GitProviderLink secondActive = repo.saveAndFlush(
+                GitProviderLink.create(userId, GitProvider.GITHUB, firstExt, "first"));
         secondActive.softDelete();
         repo.saveAndFlush(secondActive);
 

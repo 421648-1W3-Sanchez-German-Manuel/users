@@ -1,6 +1,8 @@
 package ar.edu.utn.frc.tup.p4.usersservice.users;
 
 import ar.edu.utn.frc.tup.p4.usersservice.AbstractIntegrationTest;
+import ar.edu.utn.frc.tup.p4.usersservice.auth.TestOtpSpy;
+import ar.edu.utn.frc.tup.p4.usersservice.auth.twofactor.SecondFactorProvider;
 import ar.edu.utn.frc.tup.p4.usersservice.users.dto.AdminDeactivationRequest;
 import ar.edu.utn.frc.tup.p4.usersservice.users.entities.User;
 import ar.edu.utn.frc.tup.p4.usersservice.users.enums.AccountStatus;
@@ -13,6 +15,7 @@ import ar.edu.utn.frc.tup.p4.usersservice.users.services.GitProviderLinkService;
 import ar.edu.utn.frc.tup.p4.usersservice.users.services.UserService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Import;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
 import java.util.UUID;
@@ -20,6 +23,7 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /** Etapa 4 criteria 6–7: unlink clears the mirror; deactivate frees the provider account. */
+@Import(TestOtpSpy.Config.class)
 class GitProviderUnlinkIT extends AbstractIntegrationTest {
 
     @Autowired UserService users;
@@ -27,6 +31,8 @@ class GitProviderUnlinkIT extends AbstractIntegrationTest {
     @Autowired GitProviderLinkService gitLinks;
     @Autowired GitProviderLinkRepository linkRepo;
     @Autowired PasswordEncoder encoder;
+    @Autowired SecondFactorProvider secondFactor;
+    @Autowired TestOtpSpy otpSpy;
 
     private User active(String email) {
         User u = User.create("Ana", "P", email, encoder.encode("validpassword1"), Role.STUDENT, "v1");
@@ -62,7 +68,9 @@ class GitProviderUnlinkIT extends AbstractIntegrationTest {
         actor.changePassword(encoder.encode("validpassword1"));
         repo.saveAndFlush(actor);
 
-        users.deactivate(actor.getId(), first.getId(), new AdminDeactivationRequest("na", "na", "na"));
+        secondFactor.generateChallenge(actor.getId(), actor.getEmail(), actor.getFirstNames());
+        users.deactivate(actor.getId(), first.getId(),
+                new AdminDeactivationRequest("validpassword1", otpSpy.lastCode(), first.getEmail()));
 
         assertThat(linkRepo.findByUserIdAndDeletedAtIsNull(first.getId())).isEmpty();
         assertThat(repo.findById(first.getId())).get()
