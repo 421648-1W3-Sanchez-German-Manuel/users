@@ -44,12 +44,21 @@ class ArchitectureTest {
     }
 
     @Test
-    void users_no_importa_la_implementacion_de_auth() {
+    void users_solo_cruza_la_frontera_por_EphemeralTokenService() {
+        // SPEC §5.3 rule U4, as an ALLOWLIST. It used to be a denylist of
+        // auth packages, and a denylist cannot express "only this one is
+        // allowed": every auth package missing from the list passed. That is
+        // how users/ came to import TokenStore (auth.store, not the listed
+        // auth.store.impl) and SecondFactorProvider (auth.twofactor, never
+        // listed) with the suite green. Written this way, a new auth package
+        // fails the rule instead of silently widening the boundary.
         ArchRule regla = noClasses().that().resideInAPackage(RAIZ + ".users..")
-                .should().dependOnClassesThat()
-                .resideInAnyPackage(RAIZ + ".auth.services..", RAIZ + ".auth.entities..",
-                                    RAIZ + ".auth.keys..", RAIZ + ".auth.tokens..",
-                                    RAIZ + ".auth.store.impl..");
+                .should().dependOnClassesThat(
+                        com.tngtech.archunit.base.DescribedPredicate.describe(
+                                "reside en auth.. y no son EphemeralTokenService",
+                                clase -> clase.getPackageName().startsWith(RAIZ + ".auth")
+                                        && !clase.getName().equals(
+                                                RAIZ + ".auth.store.EphemeralTokenService")));
         regla.check(clases);
     }
 

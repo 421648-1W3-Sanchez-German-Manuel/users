@@ -31,7 +31,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 /**
  * WARNING: this class EMPTIES the `users` table, and it is the only place in
  * the suite that does so. The rule under test is global
- * (countActiveWithLock(ADMIN) <= 1), so unique emails are not enough: the table
+ * (lockActive(ADMIN).size() <= 1), so unique emails are not enough: the table
  * must contain exactly the ADMIN accounts created by this test.
  *
  * There is ONE database, shared by every test class without cleanup between
@@ -237,15 +237,19 @@ class AdminRulesIT extends AbstractIntegrationTest {
      * single-use, so one ADMIN cannot have two reinforced deactivations in
      * flight at the same time — the second one dies on the consumed code, never
      * reaching the lock this test is about. Two operators racing is the only
-     * shape of this scenario that still exercises countActiveWithLock.
+     * shape of this scenario that still exercises lockActive.
      */
     @Test
     void two_CONCURRENT_deactivations_cannot_leave_zero_ADMIN_accounts() throws Exception {
         repo.deleteAll();
+        // EXACTLY TWO, and they deactivate each other. With four ADMINs -- two
+        // targets plus two separate operators -- the count never reaches the
+        // threshold, so both threads succeed and the test passes with the
+        // last-ADMIN lock deleted outright. Cross-deactivating keeps one
+        // operator per thread while starting the race at the boundary, which is
+        // the only arrangement that can actually fail when the lock is broken.
         User a = admin("c1@utn.edu.ar");
         User b = admin("c2@utn.edu.ar");
-        User actorA = admin("c3@utn.edu.ar");
-        User actorB = admin("c4@utn.edu.ar");
 
         // Both challenges are created BEFORE the race, one per operator, and
         // sequentially: the e-mail spy keeps only the LAST code, so generating
@@ -253,8 +257,8 @@ class AdminRulesIT extends AbstractIntegrationTest {
         // lock.
         record Attempt(User actor, User target, AdminDeactivationRequest request) { }
         List<Attempt> attempts = List.of(
-                new Attempt(actorA, a, reinforced(actorA, a.getEmail())),
-                new Attempt(actorB, b, reinforced(actorB, b.getEmail())));
+                new Attempt(b, a, reinforced(b, a.getEmail())),
+                new Attempt(a, b, reinforced(a, b.getEmail())));
 
         var pool = Executors.newFixedThreadPool(2);
         var ready = new CountDownLatch(2);
@@ -277,8 +281,11 @@ class AdminRulesIT extends AbstractIntegrationTest {
         pool.shutdown();
         pool.awaitTermination(30, TimeUnit.SECONDS);
 
-        assertThat(repo.countByRoleAndDeletedAtIsNull(Role.ADMIN)).isGreaterThanOrEqualTo(1);
-        assertThat(successes.get()).isLessThanOrEqualTo(2);
+        // EXACTLY one, not "at most two": with two ADMINs racing to remove each
+        // other, one must win and the other must hit the lock. `<= 2` was true
+        // of a broken lock as well.
+        assertThat(successes.get()).isEqualTo(1);
+        assertThat(repo.countByRoleAndDeletedAtIsNull(Role.ADMIN)).isEqualTo(1);
     }
 
     @Test
