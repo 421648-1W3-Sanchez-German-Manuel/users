@@ -65,6 +65,7 @@ public class GithubProviderClient implements GitProviderClient {
                 .queryParam("redirect_uri", props.redirectUri())
                 .queryParam("scope", props.scope())
                 .queryParam("state", state)
+                .queryParam("prompt", "select_account")
                 .encode()
                 .build()
                 .toUri();

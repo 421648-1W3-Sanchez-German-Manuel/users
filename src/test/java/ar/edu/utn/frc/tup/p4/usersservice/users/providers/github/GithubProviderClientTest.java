@@ -81,7 +81,7 @@ class GithubProviderClientTest {
         return values == null || values.isEmpty() ? null : values.get(0);
     }
 
-    /** #1: the authorization URL carries client_id, redirect_uri, scope and state. */
+    /** #1: the authorization URL carries identity, callback, scope, state and account selection. */
     @Test
     void authorization_url_carries_client_id_redirect_scope_and_state() {
         var params = UriComponentsBuilder.fromUriString(client.authorizationUrl("st-1").toString())
@@ -91,6 +91,7 @@ class GithubProviderClientTest {
         assertThat(params.getFirst("redirect_uri")).isEqualTo("http://front/vinculacion/callback");
         assertThat(params.getFirst("scope")).isEqualTo("");
         assertThat(params.getFirst("state")).isEqualTo("st-1");
+        assertThat(params.getFirst("prompt")).isEqualTo("select_account");
     }
 
     /** #2: the exchange asks for JSON and parses the token reply. */
