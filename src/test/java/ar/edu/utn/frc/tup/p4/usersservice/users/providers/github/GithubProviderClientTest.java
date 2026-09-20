@@ -39,6 +39,8 @@ class GithubProviderClientTest {
     private final AtomicReference<String> tokenBody = new AtomicReference<>();
     private final AtomicReference<String> userAuthorization = new AtomicReference<>();
     private final AtomicInteger tokenStatus = new AtomicInteger(200);
+    private final AtomicReference<String> tokenResponse = new AtomicReference<>(
+            "{\"access_token\": \"tok-1\", \"token_type\": \"bearer\", \"scope\": \"\"}");
     private final AtomicInteger userStatus = new AtomicInteger(200);
     private final AtomicReference<String> userBody = new AtomicReference<>(
             "{\"id\": 42, \"login\": \"octocat\", \"avatar_url\": \"https://avatars/x\", \"name\": \"O\"}");
@@ -49,7 +51,7 @@ class GithubProviderClientTest {
         server.createContext("/login/oauth/access_token", ex -> {
             tokenAccept.set(firstHeader(ex.getRequestHeaders().get("Accept")));
             tokenBody.set(new String(ex.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
-            respond(ex, tokenStatus.get(), "{\"access_token\": \"tok-1\", \"token_type\": \"bearer\", \"scope\": \"\"}");
+            respond(ex, tokenStatus.get(), tokenResponse.get());
         });
         server.createContext("/user", ex -> {
             userAuthorization.set(firstHeader(ex.getRequestHeaders().get("Authorization")));
@@ -167,5 +169,56 @@ class GithubProviderClientTest {
                     assertThat(api.toString()).doesNotContain(SECRET);
                     assertThat(Map.of("detail", api.getMessage())).doesNotContainValue(SECRET);
                 });
+    }
+
+    /**
+     * GitHub answers 200 with an error body for a code that expired or was
+     * already spent. That is a person retrying a stale callback, not an outage,
+     * so it must not read as "the provider did not respond".
+     */
+    @Test
+    void error_body_on_200_is_a_400_not_a_502() {
+        tokenResponse.set("{\"error\": \"bad_verification_code\", "
+                + "\"error_description\": \"The code passed is incorrect or expired.\"}");
+
+        assertThatThrownBy(() -> client.exchange("code-stale"))
+                .isInstanceOf(ApiException.class)
+                .satisfies(e -> {
+                    ApiException api = (ApiException) e;
+                    assertThat(api.getStatus()).isEqualTo(HttpStatus.BAD_REQUEST);
+                    assertThat(api.getType().toString()).endsWith("invalid-link-state");
+                });
+    }
+
+    /**
+     * A provider that accepts the connection and then goes quiet. Without a
+     * read timeout this call never returns and the Tomcat worker is gone for
+     * good, so the 502 below is the whole point of the timeout.
+     */
+    @Test
+    void a_provider_that_never_answers_becomes_502() throws IOException {
+        HttpServer silent = HttpServer.create(new InetSocketAddress(0), 0);
+        silent.createContext("/login/oauth/access_token", ex -> {
+            try {
+                Thread.sleep(5_000);
+            } catch (InterruptedException ie) {
+                Thread.currentThread().interrupt();
+            }
+        });
+        silent.start();
+        String silentBase = "http://localhost:" + silent.getAddress().getPort();
+        GitProviderProperties props = new GitProviderProperties(true, "cid-1", SECRET,
+                "http://front/vinculacion/callback", "", Duration.ofMinutes(5));
+        GithubProviderClient impatient = new GithubProviderClient(
+                props, silentBase, silentBase, Duration.ofMillis(300), Duration.ofMillis(300));
+
+        try {
+            assertThatThrownBy(() -> impatient.exchange("code-1"))
+                    .isInstanceOf(ApiException.class)
+                    .satisfies(e -> assertThat(((ApiException) e).getStatus())
+                            .isEqualTo(HttpStatus.BAD_GATEWAY));
+        } finally {
+            silent.stop(0);
+        }
     }
 }

@@ -13,14 +13,16 @@ import java.util.List;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * Counterpart of GitProviderDisabledIT: with a {@code client-id} the real
- * adapter registers in the Spring context (condition + RestClient wiring).
+ * Counterpart of GitProviderDisabledIT: enabled AND with a {@code client-id},
+ * the real adapter registers in the Spring context (condition + RestClient
+ * wiring). Both halves are needed — see GitProviderKillSwitchIT.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.MOCK)
 class GitProviderEnabledIT extends AbstractIntegrationTest {
 
     @DynamicPropertySource
     static void withCredentials(DynamicPropertyRegistry registry) {
+        registry.add("users.git-providers.github.enabled", () -> "true");
         registry.add("users.git-providers.github.client-id", () -> "cid-test");
         registry.add("users.git-providers.github.client-secret", () -> "secret-test");
         registry.add("users.git-providers.github.redirect-uri", () -> "http://front/vinculacion/callback");
@@ -29,7 +31,7 @@ class GitProviderEnabledIT extends AbstractIntegrationTest {
     @Autowired List<GitProviderClient> clients;
 
     @Test
-    void with_client_id_the_github_adapter_registers() {
+    void enabled_with_client_id_registers_the_github_adapter() {
         assertThat(clients).hasSize(1);
         assertThat(clients.get(0).provider().name()).isEqualTo("GITHUB");
         assertThat(clients.get(0).authorizationUrl("st").toString())

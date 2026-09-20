@@ -19,6 +19,15 @@ public class GitProviderClientRegistry {
         }
     }
 
+    /**
+     * Whether an adapter for that provider is wired in this context. Callers
+     * that must not fail when linking is off ask this instead of catching the
+     * exception from {@link #require(GitProvider)}.
+     */
+    public boolean supports(GitProvider provider) {
+        return byProvider.containsKey(provider);
+    }
+
     public GitProviderClient require(GitProvider provider) {
         GitProviderClient client = byProvider.get(provider);
         if (client == null) {

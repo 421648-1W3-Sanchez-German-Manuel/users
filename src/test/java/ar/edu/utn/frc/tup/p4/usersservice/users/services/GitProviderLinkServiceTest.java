@@ -7,6 +7,8 @@ import ar.edu.utn.frc.tup.p4.usersservice.users.entities.User;
 import ar.edu.utn.frc.tup.p4.usersservice.users.enums.AccountStatus;
 import ar.edu.utn.frc.tup.p4.usersservice.users.enums.GitProvider;
 import ar.edu.utn.frc.tup.p4.usersservice.users.enums.Role;
+import ar.edu.utn.frc.tup.p4.usersservice.users.providers.GitProviderClient;
+import ar.edu.utn.frc.tup.p4.usersservice.users.providers.GitProviderClientRegistry;
 import ar.edu.utn.frc.tup.p4.usersservice.users.providers.GitProviderIdentity;
 import ar.edu.utn.frc.tup.p4.usersservice.users.repositories.GitProviderLinkRepository;
 import ar.edu.utn.frc.tup.p4.usersservice.users.repositories.UserRepository;
@@ -16,7 +18,9 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.dao.DataIntegrityViolationException;
 
+import java.net.URI;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -44,8 +48,22 @@ class GitProviderLinkServiceTest {
 
     private UUID id() { return user.getId(); }
 
+    /** Stands in for a registered adapter so the flag alone drives these cases. */
+    private static final GitProviderClient GITHUB_ADAPTER = new GitProviderClient() {
+        @Override public GitProvider provider() { return GitProvider.GITHUB; }
+        @Override public URI authorizationUrl(String state) { return URI.create("https://github.test/" + state); }
+        @Override public GitProviderIdentity exchange(String code) { return new GitProviderIdentity("1", "octocat"); }
+    };
+
     private GitProviderLinkService service(boolean githubEnabled) {
-        return new GitProviderLinkService(links, users, githubEnabled);
+        return new GitProviderLinkService(links, users,
+                new GitProviderClientRegistry(List.of(GITHUB_ADAPTER)), githubEnabled);
+    }
+
+    /** Enabled but with nothing registered: the requirement cannot be met, so it does not apply. */
+    private GitProviderLinkService serviceWithoutAdapter() {
+        return new GitProviderLinkService(links, users,
+                new GitProviderClientRegistry(List.of()), true);
     }
 
     private void stubActiveUser() {
@@ -192,5 +210,50 @@ class GitProviderLinkServiceTest {
                     assertThat(v.username()).isEqualTo("octocat");
                     assertThat(v.linkedAt()).isEqualTo(link.getLinkedAt());
                 });
+    }
+
+    @Test
+    void enabled_without_a_registered_adapter_still_closes_onboarding() {
+        User ready = User.create("Ada", "L", "ready@utn.edu.ar", "$2a$12$h", Role.STUDENT, "v1");
+        ready.forceStatusForTest(AccountStatus.ACTIVE);
+        ready.completeOnboarding(true);
+
+        serviceWithoutAdapter().closeOnboardingIfReady(ready);
+
+        assertThat(ready.isFirstLogin()).isFalse();
+    }
+
+    @Test
+    void a_lost_insert_race_reports_the_link_conflict_not_duplicate_email() {
+        stubActiveUser();
+        when(links.findByUserIdAndProviderAndDeletedAtIsNull(id(), GitProvider.GITHUB))
+                .thenReturn(Optional.empty());
+        when(links.findByProviderAndExternalUserIdAndDeletedAtIsNull(GitProvider.GITHUB, "42"))
+                .thenReturn(Optional.empty());
+        when(links.saveAndFlush(any())).thenThrow(new DataIntegrityViolationException(
+                "Duplicate entry for key 'uq_git_link_active_provider_account'"));
+
+        assertThatThrownBy(() -> service(true).link(
+                id(), GitProvider.GITHUB, new GitProviderIdentity("42", "octocat")))
+                .isInstanceOf(ApiException.class)
+                .satisfies(e -> assertThat(((ApiException) e).getType())
+                        .isEqualTo(ErrorTypes.PROVIDER_ACCOUNT_TAKEN));
+    }
+
+    @Test
+    void a_lost_race_on_the_user_index_reports_provider_already_linked() {
+        stubActiveUser();
+        when(links.findByUserIdAndProviderAndDeletedAtIsNull(id(), GitProvider.GITHUB))
+                .thenReturn(Optional.empty());
+        when(links.findByProviderAndExternalUserIdAndDeletedAtIsNull(GitProvider.GITHUB, "42"))
+                .thenReturn(Optional.empty());
+        when(links.saveAndFlush(any())).thenThrow(new DataIntegrityViolationException(
+                "Duplicate entry for key 'uq_git_link_active_user_provider'"));
+
+        assertThatThrownBy(() -> service(true).link(
+                id(), GitProvider.GITHUB, new GitProviderIdentity("42", "octocat")))
+                .isInstanceOf(ApiException.class)
+                .satisfies(e -> assertThat(((ApiException) e).getType())
+                        .isEqualTo(ErrorTypes.PROVIDER_ALREADY_LINKED));
     }
 }

@@ -21,12 +21,19 @@ import static org.assertj.core.api.Assertions.assertThat;
 /**
  * Etapa 4 criteria 2 and 4 (service level): with GitHub enabled, tour alone does
  * not clear first_login; link + tour does.
+ *
+ * Credentials are set as well as the flag: the requirement only applies while
+ * an adapter is registered and a person can actually satisfy it. See
+ * OnboardingGitHubMisconfiguredIT for the flag without credentials.
  */
 class OnboardingWithGitLinkIT extends AbstractIntegrationTest {
 
     @DynamicPropertySource
     static void enableGithub(DynamicPropertyRegistry registry) {
         registry.add("users.git-providers.github.enabled", () -> "true");
+        registry.add("users.git-providers.github.client-id", () -> "cid-test");
+        registry.add("users.git-providers.github.client-secret", () -> "secret-test");
+        registry.add("users.git-providers.github.redirect-uri", () -> "http://front/vinculacion/callback");
     }
 
     @Autowired UserService users;
