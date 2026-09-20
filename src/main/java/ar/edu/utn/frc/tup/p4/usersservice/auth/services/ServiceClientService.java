@@ -3,8 +3,8 @@ package ar.edu.utn.frc.tup.p4.usersservice.auth.services;
 import ar.edu.utn.frc.tup.p4.usersservice.auth.ScopeCatalog;
 import ar.edu.utn.frc.tup.p4.usersservice.auth.repositories.ServiceClientRepository;
 import ar.edu.utn.frc.tup.p4.usersservice.auth.tokens.TokenClaims;
+import ar.edu.utn.frc.tup.p4.usersservice.shared.security.UniformCostPasswordVerifier;
 import ar.edu.utn.frc.tup.p4.usersservice.shared.web.ApiException;
-import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -17,23 +17,28 @@ import java.util.stream.Collectors;
 public class ServiceClientService {
 
     private final ServiceClientRepository repository;
-    private final PasswordEncoder encoder;
+    private final UniformCostPasswordVerifier secrets;
     private final TokenService tokens;
 
     public ServiceClientService(
             ServiceClientRepository repository,
-            PasswordEncoder encoder,
+            UniformCostPasswordVerifier secrets,
             TokenService tokens) {
         this.repository = repository;
-        this.encoder = encoder;
+        this.secrets = secrets;
         this.tokens = tokens;
     }
 
     @Transactional(readOnly = true)
     public String issueServiceToken(String clientId, String secret, String scope, String audience) {
-        var client = repository.findByClientIdAndDeletedAtIsNull(clientId)
-                .filter(candidate -> encoder.matches(secret, candidate.getSecretHash()))
-                .orElseThrow(ApiException::invalidCredentials);
+        // Same reasoning as the person login: an Optional.filter(...) here only
+        // reaches the BCrypt when the clientId exists, and the ~100 ms gap
+        // enumerates the registered clients even though the answer is the same
+        // invalid-credentials either way. See UniformCostPasswordVerifier.
+        var client = repository.findByClientIdAndDeletedAtIsNull(clientId).orElse(null);
+        if (!secrets.matches(secret, client == null ? null : client.getSecretHash())) {
+            throw ApiException.invalidCredentials();
+        }
 
         Set<String> requestedScopes = Arrays.stream(scope == null ? new String[0] : scope.split("[ ,]+"))
                 .filter(candidate -> !candidate.isBlank())
