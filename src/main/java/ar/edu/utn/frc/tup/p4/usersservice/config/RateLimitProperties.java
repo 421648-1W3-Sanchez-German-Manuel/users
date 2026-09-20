@@ -18,6 +18,10 @@ import java.time.Duration;
  *       or not, so there is no "success" that could clear it.</li>
  *   <li>{@code twofactor-*}: issued 2FA challenges. Prevents someone who already
  *       has the password from flooding the account owner's inbox.</li>
+ *   <li>{@code activation-*}: activation links resent. Same reasoning as
+ *       {@code reset-*} — it is the other public endpoint that sends mail on
+ *       demand, and it counts ATTEMPTS because its response is constant
+ *       whether or not the account exists.</li>
  * </ul>
  */
 @ConfigurationProperties(prefix = "users.ratelimit")
@@ -27,4 +31,6 @@ public record RateLimitProperties(
         @Name("reset-max-requests") int resetMaxRequests,
         @Name("reset-window") Duration resetWindow,
         @Name("twofactor-max-challenges") int twoFactorMaxChallenges,
-        @Name("twofactor-window") Duration twoFactorWindow) { }
+        @Name("twofactor-window") Duration twoFactorWindow,
+        @Name("activation-max-requests") int activationMaxRequests,
+        @Name("activation-window") Duration activationWindow) { }

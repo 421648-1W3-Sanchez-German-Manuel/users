@@ -145,6 +145,14 @@ users:
     reset-window: PT15M
     twofactor-max-challenges: 5  # mails de 2FA por email
     twofactor-window: PT15M
+    # Reenvios de enlace de activacion por email. El endpoint es PUBLICO y
+    # manda mail, igual que /password/reset: sin este tope el unico limite es
+    # el del gateway, que cuenta por IP y por lo tanto no protege una casilla
+    # concreta -- basta cambiar de IP para seguir inundandola, y cada pedido
+    # ademas agrega una fila a outbox_events. Mismo numero que reset porque es
+    # el mismo gesto de la persona: "no me llego, mandalo de nuevo".
+    activation-max-requests: 3
+    activation-window: PT15M
   # Git provider linking (SPEC-git-provider-linking §4.3). DEC-GL-05: with no
   # credentials the provider stays disabled and the app still starts.
   git-providers:

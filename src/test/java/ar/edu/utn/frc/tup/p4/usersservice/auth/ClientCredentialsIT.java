@@ -3,7 +3,10 @@ package ar.edu.utn.frc.tup.p4.usersservice.auth;
 import ar.edu.utn.frc.tup.p4.usersservice.AbstractIntegrationTest;
 import ar.edu.utn.frc.tup.p4.usersservice.auth.entities.ServiceClient;
 import ar.edu.utn.frc.tup.p4.usersservice.auth.repositories.ServiceClientRepository;
+import ar.edu.utn.frc.tup.p4.usersservice.auth.controllers.TokenController;
+import ar.edu.utn.frc.tup.p4.usersservice.auth.dto.ClientCredentialsRequest;
 import ar.edu.utn.frc.tup.p4.usersservice.auth.services.ServiceClientService;
+import ar.edu.utn.frc.tup.p4.usersservice.config.JwtProperties;
 import ar.edu.utn.frc.tup.p4.usersservice.shared.web.ApiException;
 import com.nimbusds.jwt.SignedJWT;
 import org.junit.jupiter.api.BeforeEach;
@@ -31,6 +34,12 @@ class ClientCredentialsIT extends AbstractIntegrationTest {
     @Autowired
     PasswordEncoder encoder;
 
+    @Autowired
+    TokenController controller;
+
+    @Autowired
+    JwtProperties jwtProperties;
+
     @BeforeEach
     void createClient() {
         if (repository.findByClientIdAndDeletedAtIsNull(CLIENT_ID).isEmpty()) {
@@ -40,6 +49,60 @@ class ClientCredentialsIT extends AbstractIntegrationTest {
                     "Courses",
                     Set.of("users.profile.read")));
         }
+    }
+
+    /**
+     * The `expiresIn` the endpoint advertises has to come from the same config
+     * as the `exp` it signs. With the value hardcoded they agreed only by
+     * coincidence, and the first change to users.jwt.service-ttl would make the
+     * response lie — the client caches on the word of this field and starts
+     * sending a token that is already expired.
+     */
+    @Test
+    void the_advertised_expiresIn_matches_the_signed_exp() throws Exception {
+        String jwt = service.issueServiceToken(
+                CLIENT_ID, CLIENT_SECRET, "users.profile.read", "users-service");
+        var claims = SignedJWT.parse(jwt).getJWTClaimsSet();
+
+        long signedLifetime = claims.getExpirationTime().toInstant().getEpochSecond()
+                - claims.getIssueTime().toInstant().getEpochSecond();
+
+        assertThat(signedLifetime).isEqualTo(jwtProperties.serviceTtl().toSeconds());
+        assertThat((long) controller.token(new ClientCredentialsRequest(
+                        CLIENT_ID, CLIENT_SECRET, "client_credentials",
+                        "users.profile.read", "users-service")).get("expiresIn"))
+                .isEqualTo(signedLifetime);
+    }
+
+    /**
+     * Non-negotiable 5 is about not building enumeration oracles, and an
+     * unknown clientId used to answer ~100 ms faster than a known one: the
+     * BCrypt only ran when the row existed. Same response, different duration,
+     * and the duration is the part an attacker measures.
+     *
+     * The assertion is deliberately loose — a wall clock on a shared CI box is
+     * not a stopwatch. What it catches is the REGRESSION that matters: going
+     * back to Optional.filter(...) makes the unknown branch skip BCrypt
+     * entirely and drop to ~1 ms, which is an order of magnitude below the
+     * floor asserted here, not a few milliseconds.
+     */
+    @Test
+    void an_unknown_clientId_costs_the_same_BCrypt_as_a_known_one() {
+        long known = millisOf(() -> service.issueServiceToken(
+                CLIENT_ID, "the-wrong-secret", "users.profile.read", "users-service"));
+        long unknown = millisOf(() -> service.issueServiceToken(
+                "no-such-client-" + UUID.randomUUID(), CLIENT_SECRET,
+                "users.profile.read", "users-service"));
+
+        // The test profile uses a cheap encoder, so this is not "about 100 ms":
+        // it is "the same order of magnitude as a real comparison".
+        assertThat(unknown).isGreaterThanOrEqualTo(known / 4);
+    }
+
+    private long millisOf(Runnable rejected) {
+        long start = System.nanoTime();
+        assertThatThrownBy(rejected::run).isInstanceOf(ApiException.class);
+        return (System.nanoTime() - start) / 1_000_000;
     }
 
     @Test

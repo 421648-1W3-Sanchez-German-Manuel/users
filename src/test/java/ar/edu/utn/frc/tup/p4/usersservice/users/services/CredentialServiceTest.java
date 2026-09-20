@@ -1,5 +1,6 @@
 package ar.edu.utn.frc.tup.p4.usersservice.users.services;
 
+import ar.edu.utn.frc.tup.p4.usersservice.shared.security.UniformCostPasswordVerifier;
 import ar.edu.utn.frc.tup.p4.usersservice.users.entities.User;
 import ar.edu.utn.frc.tup.p4.usersservice.users.enums.AccountStatus;
 import ar.edu.utn.frc.tup.p4.usersservice.users.enums.Role;
@@ -25,7 +26,8 @@ class CredentialServiceTest {
 
     PasswordEncoder encoder = new BCryptPasswordEncoder(4);   // low cost: this is a test
     UserRepository repo = mock(UserRepository.class);
-    CredentialService service = new CredentialServiceImpl(repo, encoder);
+    UniformCostPasswordVerifier passwords = new UniformCostPasswordVerifier(encoder);
+    CredentialService service = new CredentialServiceImpl(repo, encoder, passwords);
 
     private User active(String password) {
         User u = User.create("Ana", "Perez", "ana@utn.edu.ar", encoder.encode(password), Role.STUDENT, "v1");

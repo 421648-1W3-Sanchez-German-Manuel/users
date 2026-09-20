@@ -78,8 +78,21 @@ public class UserController {
                         **Does NOT include email, legajo, or account status**; use `/me` for that,
                         which returns the current user's OWN account.""")
     @ApiResponse(responseCode = "200", description = "Public profile.")
+    @ApiResponse(responseCode = "403", description = """
+            `type`: `access-denied`. A service token without the `users.profile.read` scope.""")
     @ApiResponse(responseCode = "404", description = "`type`: `route-not-found`.")
     @GetMapping("/profile/{id}")
+    // A person: any classmate, which is what this endpoint is for. A SERVICE:
+    // only with the scope the token was issued for.
+    //
+    // Until now nothing checked the scope anywhere in this service — it was
+    // validated on issue, signed, propagated as X-Service-Scopes and turned
+    // into a GrantedAuthority by GatewayIdentityFilter, and then never read.
+    // It happened to be harmless only because ScopeCatalog has a single
+    // issuable scope, so every service token carried exactly this one. The day
+    // a second one exists, a token issued for `cursos.*` would walk into this
+    // endpoint unless somebody had added this line first.
+    @PreAuthorize("principal.isPerson() or hasAuthority('users.profile.read')")
     public ProfileResponse profile(@PathVariable UUID id) {
         return users.profile(id);
     }
