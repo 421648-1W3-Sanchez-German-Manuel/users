@@ -58,6 +58,8 @@ users:
     reset-window: PT15M
     twofactor-max-challenges: 5
     twofactor-window: PT15M
+    activation-max-requests: 3
+    activation-window: PT15M
   kafka:
     topics:
       user-events: user-events

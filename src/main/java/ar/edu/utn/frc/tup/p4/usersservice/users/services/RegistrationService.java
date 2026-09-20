@@ -2,6 +2,7 @@ package ar.edu.utn.frc.tup.p4.usersservice.users.services;
 
 import ar.edu.utn.frc.tup.p4.usersservice.auth.store.EphemeralTokenService;
 import ar.edu.utn.frc.tup.p4.usersservice.config.KafkaTopicsProperties;
+import ar.edu.utn.frc.tup.p4.usersservice.config.RateLimitProperties;
 import ar.edu.utn.frc.tup.p4.usersservice.shared.events.AccountEventPublisher;
 import ar.edu.utn.frc.tup.p4.usersservice.shared.notifications.NotificationEventPublisher;
 import ar.edu.utn.frc.tup.p4.usersservice.shared.notifications.EmailType;
@@ -43,18 +44,20 @@ public class RegistrationService {
     private final NotificationEventPublisher mails;
     private final AccountEventPublisher events;
     private final KafkaTopicsProperties topics;
+    private final RateLimitProperties rate;
     private final String currentTermsVersion;
     private final String frontUrl;
 
     public RegistrationService(UserRepository repo, EmailWhitelistRepository whitelist,
                             PasswordEncoder encoder, EphemeralTokenService ephemeralTokens,
                             NotificationEventPublisher mails, AccountEventPublisher events,
-                            KafkaTopicsProperties topics,
+                            KafkaTopicsProperties topics, RateLimitProperties rate,
                             @Value("${users.legal.terms-version}") String currentTermsVersion,
                             @Value("${users.front-url:https://app.tpi.utn.frc}") String frontUrl) {
         this.repo = repo; this.whitelist = whitelist; this.encoder = encoder;
         this.ephemeralTokens = ephemeralTokens; this.mails = mails;
-        this.events = events; this.topics = topics; this.currentTermsVersion = currentTermsVersion;
+        this.events = events; this.topics = topics; this.rate = rate;
+        this.currentTermsVersion = currentTermsVersion;
         this.frontUrl = frontUrl;
     }
 
@@ -187,7 +190,29 @@ public class RegistrationService {
     /** Anti-enumeration: the same response whether or not the account exists. */
     @Transactional
     public String resendActivation(String email) {
-        repo.findByEmailAndDeletedAtIsNull(email.toLowerCase(Locale.ROOT))
+        // Counted BEFORE looking the account up, and against the address as
+        // given, exist or not. Reversing the order would leak: only registered
+        // addresses would ever reach the limit, so hitting it would answer the
+        // question the constant response exists to refuse.
+        //
+        // Attempts, not failures: this endpoint has no successful outcome that
+        // could clear the budget. Same shape as PasswordService.requestReset,
+        // which is the other public endpoint that sends mail — this one was
+        // the only one of the two without a tope, so its only ceiling was the
+        // gateway's per-IP bucket. That bucket does not protect a MAILBOX:
+        // changing IP keeps flooding the same address, and every request also
+        // appends a row to outbox_events.
+        //
+        // Counted through EphemeralTokenService and not TokenStore, where the
+        // counter lives: rule U4 makes that interface the only crossing from
+        // users/ into auth/, and ArchitectureTest fails the build otherwise.
+        String key = email.toLowerCase(Locale.ROOT);
+        if (ephemeralTokens.incrementUsage("activation", key, rate.activationWindow())
+                > rate.activationMaxRequests()) {
+            throw ApiException.tooManyAttempts(rate.activationWindow());
+        }
+
+        repo.findByEmailAndDeletedAtIsNull(key)
                 .filter(u -> u.getAccountStatus() == AccountStatus.PENDING_EMAIL)
                 .ifPresent(this::sendActivationLink);
         return CONSTANT_RESPONSE;
