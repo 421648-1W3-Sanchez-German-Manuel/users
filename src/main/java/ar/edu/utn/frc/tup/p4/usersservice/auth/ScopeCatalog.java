@@ -7,7 +7,8 @@ import java.util.Set;
 public final class ScopeCatalog {
 
     private static final Map<String, String> ISSUABLE_SCOPES = Map.of(
-            "users.profile.read", "users-service");
+            "users.profile.read", "users-service",
+            "market.catalog.read", "market-service");
 
     private ScopeCatalog() {
     }
