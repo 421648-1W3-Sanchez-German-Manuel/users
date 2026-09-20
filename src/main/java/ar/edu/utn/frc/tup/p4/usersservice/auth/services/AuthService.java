@@ -95,7 +95,10 @@ public class AuthService {
     @Transactional
     public TokenResponse issueTokenPair(UUID userId) {
         String sid = UUID.randomUUID().toString();
-        store.saveSession(userId, sid);
+        // Bounded by the refresh lifetime: nothing outlives a refresh token,
+        // so a session nobody refreshed in that long is unreachable anyway.
+        // Without a TTL the key was immortal, one per person who ever logged in.
+        store.saveSession(userId, sid, jwt.refreshTtl());
         return issueWithSessionId(userId, sid, UUID.randomUUID().toString());
     }
 
@@ -154,6 +157,11 @@ public class AuthService {
             store.revokeFamily(data.familyId());
             throw currentSessionId == null ? ApiException.sessionClosed() : ApiException.sessionSuperseded();
         }
+
+        // The session is alive and being used: slide its window so it does not
+        // expire underneath a refresh chain that is still going. EXPIRE only —
+        // the sid is not rewritten, so DEC-22 ("login is the only writer") holds.
+        store.touchSession(data.userId(), jwt.refreshTtl());
 
         // 4. Rotate the REFRESH (not the sid). Reuse detection: the old one dies,
         // and its key marks the family for the rest of the refresh life.

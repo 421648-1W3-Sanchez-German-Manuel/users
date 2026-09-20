@@ -7,7 +7,31 @@ import java.util.UUID;
 /** Redis persistence contract exposed to the authentication domain. */
 public interface TokenStore {
 
-    void saveSession(UUID userId, String sid);
+    /**
+     * Writes the CURRENT session id, with an expiry.
+     *
+     * <p>The key used to be written without one. Redis is the session registry
+     * here and not a cache, so it must outlive every credential that can refer
+     * to it — but "no expiry" is not the way to get that: it leaves one key per
+     * person who ever logged in and never logged out, for as long as the
+     * instance lives, and the AOF makes them survive restarts too.
+     *
+     * <p>The right bound is the refresh lifetime: a refresh token is the
+     * longest-lived thing that can name this session, so a session nobody has
+     * refreshed in that long cannot be reached by anything. See
+     * {@link #touchSession} for how the window slides.
+     */
+    void saveSession(UUID userId, String sid, Duration ttl);
+
+    /**
+     * Extends the expiry WITHOUT touching the sid — EXPIRE, never SET.
+     *
+     * <p>DEC-22 says login is the only operation that writes {@code session:},
+     * and that still holds: this does not write a session id, so the single
+     * session invariant is untouched. It only keeps an active session from
+     * expiring underneath a refresh chain that is still being used.
+     */
+    void touchSession(UUID userId, Duration ttl);
 
     Optional<String> findSessionId(UUID userId);
 

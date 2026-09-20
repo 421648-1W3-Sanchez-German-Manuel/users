@@ -54,4 +54,9 @@ public class RedisEphemeralTokenService implements EphemeralTokenService {
     public void deleteSession(UUID userId) {
         tokens.deleteSession(userId);
     }
+
+    @Override
+    public int incrementUsage(String bucket, String key, Duration window) {
+        return tokens.incrementUsage(bucket, key, window);
+    }
 }

@@ -56,7 +56,7 @@ class PasswordResetIT extends AbstractIntegrationTest {
     @Test
     void confirmResetChangesThePasswordAndRevokesSessions() {
         User user = createUser("res2" + SUF);
-        store.saveSession(user.getId(), "old-sid");
+        store.saveSession(user.getId(), "old-sid", java.time.Duration.ofMinutes(10));
 
         passwords.requestReset("res2" + SUF);
         passwords.confirmReset(spy.lastToken(), "newvalidpassword1");

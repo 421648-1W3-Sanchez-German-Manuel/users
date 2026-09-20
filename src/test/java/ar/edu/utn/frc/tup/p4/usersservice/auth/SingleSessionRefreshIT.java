@@ -4,6 +4,7 @@ import ar.edu.utn.frc.tup.p4.usersservice.AbstractIntegrationTest;
 import ar.edu.utn.frc.tup.p4.usersservice.auth.dto.TokenResponse;
 import ar.edu.utn.frc.tup.p4.usersservice.auth.services.AuthService;
 import ar.edu.utn.frc.tup.p4.usersservice.auth.store.TokenStore;
+import ar.edu.utn.frc.tup.p4.usersservice.config.JwtProperties;
 import ar.edu.utn.frc.tup.p4.usersservice.shared.web.ApiException;
 import ar.edu.utn.frc.tup.p4.usersservice.users.entities.User;
 import ar.edu.utn.frc.tup.p4.usersservice.users.enums.AccountStatus;
@@ -12,9 +13,12 @@ import ar.edu.utn.frc.tup.p4.usersservice.users.repositories.UserRepository;
 import com.nimbusds.jwt.SignedJWT;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
+import java.time.Duration;
 import java.util.UUID;
+import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -40,6 +44,8 @@ class SingleSessionRefreshIT extends AbstractIntegrationTest {
     @Autowired TokenStore store;
     @Autowired UserRepository repo;
     @Autowired PasswordEncoder encoder;
+    @Autowired StringRedisTemplate redis;
+    @Autowired JwtProperties jwt;
 
     private UUID createUser(String email) {
         User user = User.create("A", "A", email, encoder.encode("validpassword1"), Role.STUDENT, "v1");
@@ -105,5 +111,52 @@ class SingleSessionRefreshIT extends AbstractIntegrationTest {
         TokenResponse tokens2 = auth.refresh(tokens1.refreshToken());
         assertThat(SignedJWT.parse(tokens2.accessToken()).getJWTClaimsSet().getStringClaim("est"))
                 .isEqualTo("ACTIVE");      // without logging in again
+    }
+
+    /**
+     * session:{userId} used to be written with no expiry at all, which left one
+     * immortal key per person who ever logged in and never logged out — and the
+     * AOF carried them across restarts.
+     *
+     * The bound is the refresh lifetime, because a refresh token is the
+     * longest-lived thing that can name a session: past that, nothing can reach
+     * the key anyway.
+     */
+    @Test
+    void the_session_key_expires_with_the_refresh_lifetime() {
+        UUID id = createUser("ttl1" + SUF);
+        auth.issueTokenPair(id);
+
+        Long ttl = redis.getExpire("session:" + id, TimeUnit.SECONDS);
+
+        assertThat(ttl).isNotNull().isPositive()
+                .isLessThanOrEqualTo(jwt.refreshTtl().toSeconds());
+    }
+
+    /**
+     * And it SLIDES. Without this, a session would die exactly 7 days after
+     * login even while being refreshed daily — the refresh token issued on day
+     * 6 is valid until day 13, so the key would vanish underneath a credential
+     * that is still good, and step 3 of refresh would answer session-closed to
+     * someone who never stopped using the app.
+     *
+     * EXPIRE only: the assertion on the sid is what proves DEC-22 still holds,
+     * since login stays the only operation that WRITES a session id.
+     */
+    @Test
+    void refreshing_slides_the_expiry_without_rewriting_the_sid() throws Exception {
+        UUID id = createUser("ttl2" + SUF);
+        TokenResponse tokens1 = auth.issueTokenPair(id);
+        String sid = store.findSessionId(id).orElseThrow();
+
+        // Bring the key close to death, as a week of elapsed time would.
+        redis.expire("session:" + id, Duration.ofSeconds(30));
+        assertThat(redis.getExpire("session:" + id, TimeUnit.SECONDS)).isLessThanOrEqualTo(30);
+
+        auth.refresh(tokens1.refreshToken());
+
+        assertThat(redis.getExpire("session:" + id, TimeUnit.SECONDS))
+                .isGreaterThan(30);
+        assertThat(store.findSessionId(id)).contains(sid);   // the sid did NOT change
     }
 }
