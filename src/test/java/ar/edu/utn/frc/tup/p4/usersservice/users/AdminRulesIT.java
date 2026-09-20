@@ -190,7 +190,7 @@ class AdminRulesIT extends AbstractIntegrationTest {
     void deactivation_closes_the_session_of_the_target() {
         User manager = withRole(Role.GESTOR, "session-manager@utn.edu.ar");
         User target = withRole(Role.PROFESSOR, "session-target@utn.edu.ar");
-        tokens.saveSession(target.getId(), "sid-still-open");
+        tokens.saveSession(target.getId(), "sid-still-open", java.time.Duration.ofMinutes(10));
 
         users.deactivate(manager.getId(), target.getId(),
                 reinforced(manager, target.getEmail()));

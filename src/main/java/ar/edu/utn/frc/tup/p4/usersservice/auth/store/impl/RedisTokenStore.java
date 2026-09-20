@@ -43,8 +43,16 @@ public class RedisTokenStore implements TokenStore {
     }
 
     @Override
-    public void saveSession(UUID userId, String sid) {
-        redis.opsForValue().set(SESSION_PREFIX + userId, sid);
+    public void saveSession(UUID userId, String sid, Duration ttl) {
+        redis.opsForValue().set(SESSION_PREFIX + userId, sid, ttl);
+    }
+
+    @Override
+    public void touchSession(UUID userId, Duration ttl) {
+        // EXPIRE, not SET: the sid must not change here (DEC-22). On a key that
+        // is already gone this is a no-op, which is the correct outcome — a
+        // session that expired is not resurrected by using its refresh token.
+        redis.expire(SESSION_PREFIX + userId, ttl);
     }
 
     @Override
