@@ -57,7 +57,9 @@ class ProfileScopeIT extends AbstractIntegrationTest {
         User u = User.create(firstNames, lastNames, "scope-" + UUID.randomUUID() + "@utn.edu.ar",
                 "$2a$12$h", Role.STUDENT, "v1");
         u.forceStatusForTest(AccountStatus.ACTIVE);
-        u.completeOnboarding(github, "avatars/a.png", true);
+        u.completeOnboarding(true);
+        u.clearFirstLogin();
+        u.mirrorGithubUsername(github);
         return repo.saveAndFlush(u).getId();
     }
 

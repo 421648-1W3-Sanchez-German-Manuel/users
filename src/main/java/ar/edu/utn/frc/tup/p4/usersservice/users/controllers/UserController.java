@@ -51,27 +51,25 @@ public class UserController {
     }
 
     /**
-     * This is the EXIT from the onboarding gate, so it is exempt from both
-     * fine-grained gates (rule 4). Without the ONBOARDING exemption, the gate
-     * it resolves would intercept the route and the account could never leave;
-     * without the PASSWORD exemption, the initial ADMIN, which starts with
-     * both conditions pending, would be locked out.
+     * Exit of the onboarding tour step. Exempt from both fine-grained gates
+     * (non-negotiable 4). With GitHub enabled this alone does NOT clear
+     * first_login — that needs a successful link (DEC-GL-14).
      */
-    @Operation(summary = "Completes onboarding",
+    @Operation(summary = "Confirms the guided tour",
                description = """
-                        This is the EXIT from the onboarding gate, so it is exempt from both
-                        fine-grained gates. Without the ONBOARDING exemption, the gate it resolves
-                        would intercept the route and the account could never leave; without the
-                        PASSWORD exemption, the initial ADMIN, which starts with both conditions
-                        pending, would be locked out.
+                        Marks the guided tour as completed. Exempt from both fine-grained gates
+                        (PASSWORD and ONBOARDING). With GitHub linking enabled this does NOT clear
+                        `firstLogin` by itself — a successful provider link is also required
+                        (DEC-GL-14). When GitHub is disabled, the tour alone is enough (DEC-GL-05).
 
-                        `avatarRef` is OPTIONAL.""")
-    @ApiResponse(responseCode = "200", description = "Onboarding complete. The gate no longer blocks access.")
+                        Body: `{ "tourOk": true }` only. Username and avatar are no longer accepted
+                        (DEC-GL-11, DEC-GL-21).""")
+    @ApiResponse(responseCode = "200", description = "Tour recorded. The onboarding gate may still block until GitHub is linked.")
     @SkipAccountGate({SkipAccountGate.Gate.PASSWORD, SkipAccountGate.Gate.ONBOARDING})
     @PatchMapping("/me/onboarding")
     public void onboarding(@AuthenticationPrincipal GatewayPrincipal p,
                            @Valid @RequestBody OnboardingRequest r) {
-        users.completeOnboarding(p.id(), r.githubUsername(), r.avatarRef(), r.tourOk());
+        users.completeOnboarding(p.id(), r.tourOk());
     }
 
     @Operation(summary = "Another person's public profile",

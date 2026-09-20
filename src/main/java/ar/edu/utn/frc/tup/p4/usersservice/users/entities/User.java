@@ -113,12 +113,31 @@ private Role role;
         this.deletedAt = Instant.now();
     }
 
-    /** DEC-30: avatarRef is OPTIONAL while object storage is out of this sprint. */
-    public void completeOnboarding(String githubUsername, String avatarRef, boolean tourOk) {
-        this.githubUsername = githubUsername;
-        this.avatarRef = avatarRef;
+    /**
+     * DEC-GL-11: marks the guided tour only. Does NOT clear first_login —
+     * that is closeOnboardingIfReady() (DEC-GL-14). avatarRef / githubUsername
+     * no longer travel in the onboarding body (DEC-GL-21).
+     */
+    public void completeOnboarding(boolean tourOk) {
         this.guidedTourCompleted = tourOk;
+        this.updatedAt = Instant.now();
+    }
+
+    /** DEC-GL-14: only path that clears first_login (via closeOnboardingIfReady). */
+    public void clearFirstLogin() {
         this.firstLogin = false;
+        this.updatedAt = Instant.now();
+    }
+
+    /** DEC-GL-11: mirror of the verified provider login. */
+    public void mirrorGithubUsername(String username) {
+        this.githubUsername = username;
+        this.updatedAt = Instant.now();
+    }
+
+    /** DEC-GL-13 / DEC-GL-15: unlink must clear the mirror so GET /me stays honest. */
+    public void clearGithubUsername() {
+        this.githubUsername = null;
         this.updatedAt = Instant.now();
     }
 

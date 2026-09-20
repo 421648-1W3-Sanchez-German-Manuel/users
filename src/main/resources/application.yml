@@ -153,6 +153,16 @@ users:
     # el mismo gesto de la persona: "no me llego, mandalo de nuevo".
     activation-max-requests: 3
     activation-window: PT15M
+  # Git provider linking (SPEC-git-provider-linking §4.3). DEC-GL-05: with no
+  # credentials the provider stays disabled and the app still starts.
+  git-providers:
+    github:
+      enabled:       ${GITHUB_LINK_ENABLED:false}
+      client-id:     ${GITHUB_CLIENT_ID:}
+      client-secret: ${GITHUB_CLIENT_SECRET:}
+      redirect-uri:  ${GITHUB_REDIRECT_URI:}   # DEC-GL-07 / DEC-GL-19: {FRONT_ORIGIN}/vinculacion/callback
+      scope:         ${GITHUB_SCOPE:}          # DEC-GL-10: empty by default
+      state-ttl:     ${GITHUB_STATE_TTL:PT5M}  # DEC-GL-08
   kafka:
     # One topic per business domain, as required by the platform Kafka standard.
     topics:
