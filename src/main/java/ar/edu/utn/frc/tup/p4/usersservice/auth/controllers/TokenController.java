@@ -2,6 +2,7 @@ package ar.edu.utn.frc.tup.p4.usersservice.auth.controllers;
 
 import ar.edu.utn.frc.tup.p4.usersservice.auth.dto.ClientCredentialsRequest;
 import ar.edu.utn.frc.tup.p4.usersservice.auth.services.ServiceClientService;
+import ar.edu.utn.frc.tup.p4.usersservice.config.JwtProperties;
 import ar.edu.utn.frc.tup.p4.usersservice.shared.web.ApiException;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
@@ -21,9 +22,11 @@ import java.util.Map;
 public class TokenController {
 
     private final ServiceClientService clients;
+    private final JwtProperties jwt;
 
-    public TokenController(ServiceClientService clients) {
+    public TokenController(ServiceClientService clients, JwtProperties jwt) {
         this.clients = clients;
+        this.jwt = jwt;
     }
 
     @Operation(summary = "Issues a service token (client_credentials)",
@@ -55,14 +58,17 @@ public class TokenController {
             throw ApiException.validation("Unsupported grantType: " + request.grantType());
         }
 
-        String jwt = clients.issueServiceToken(
+        String token = clients.issueServiceToken(
                 request.clientId(),
                 request.clientSecret(),
                 request.scope(),
                 request.audience());
+        // From the config, NOT a literal: with a hardcoded 300 the response
+        // keeps claiming five minutes after someone raises users.jwt.service-ttl,
+        // and the client caches a token past its exp on the word of this field.
         return Map.of(
-                "accessToken", jwt,
+                "accessToken", token,
                 "tokenType", "Bearer",
-                "expiresIn", 300);
+                "expiresIn", jwt.serviceTtl().toSeconds());
     }
 }
