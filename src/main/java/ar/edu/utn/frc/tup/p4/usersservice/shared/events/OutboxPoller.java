@@ -1,7 +1,7 @@
 package ar.edu.utn.frc.tup.p4.usersservice.shared.events;
 
 import ar.edu.utn.frc.tup.p4.usersservice.shared.events.entities.OutboxStatus;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.util.RawValue;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -28,15 +28,12 @@ public class OutboxPoller {
 
     private final OutboxRepository outbox;
     private final KafkaTemplate<String, Object> kafka;
-    private final ObjectMapper mapper;
 
     public OutboxPoller(
             OutboxRepository outbox,
-            KafkaTemplate<String, Object> kafka,
-            ObjectMapper mapper) {
+            KafkaTemplate<String, Object> kafka) {
         this.outbox = outbox;
         this.kafka = kafka;
-        this.mapper = mapper;
     }
 
     @Scheduled(fixedDelayString = "${users.outbox.polling-delay:PT3S}")
@@ -45,11 +42,10 @@ public class OutboxPoller {
         var pendingEvents = outbox.takeByStatus(OutboxStatus.PENDING, Limit.of(BATCH_SIZE));
         for (var event : pendingEvents) {
             try {
-                Object value = mapper.readValue(event.getPayload(), Object.class);
                 kafka.send(
                         event.getDestinationTopic(),
                         event.getMessageKey(),
-                        value).get();
+                        new RawValue(event.getPayload())).get();
                 event.markPublished();
             } catch (InterruptedException exception) {
                 Thread.currentThread().interrupt();

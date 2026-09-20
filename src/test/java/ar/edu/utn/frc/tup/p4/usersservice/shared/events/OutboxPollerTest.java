@@ -2,13 +2,13 @@ package ar.edu.utn.frc.tup.p4.usersservice.shared.events;
 
 import ar.edu.utn.frc.tup.p4.usersservice.shared.events.entities.OutboxEvent;
 import ar.edu.utn.frc.tup.p4.usersservice.shared.events.entities.OutboxStatus;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.util.RawValue;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.springframework.data.domain.Limit;
 import org.springframework.kafka.core.KafkaTemplate;
 
 import java.util.List;
-import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 
@@ -26,7 +26,6 @@ class OutboxPollerTest {
         OutboxRepository repository = mock(OutboxRepository.class);
         @SuppressWarnings("unchecked")
         KafkaTemplate<String, Object> kafka = mock(KafkaTemplate.class);
-        ObjectMapper mapper = new ObjectMapper();
         UUID userId = UUID.randomUUID();
         String payload = "{\"eventType\":\"STUDENT-REGISTERED\",\"eventVersion\":1}";
         OutboxEvent event = pendingEvent(userId, payload);
@@ -36,9 +35,12 @@ class OutboxPollerTest {
         when(kafka.send(eq("user-events"), eq(userId.toString()), any()))
                 .thenReturn(CompletableFuture.completedFuture(null));
 
-        new OutboxPoller(repository, kafka, mapper).publishPending();
+        new OutboxPoller(repository, kafka).publishPending();
 
-        verify(kafka).send(eq("user-events"), eq(userId.toString()), any(Map.class));
+        ArgumentCaptor<Object> valueCaptor = ArgumentCaptor.forClass(Object.class);
+        verify(kafka).send(eq("user-events"), eq(userId.toString()), valueCaptor.capture());
+        assertThat(valueCaptor.getValue()).isInstanceOf(RawValue.class);
+        assertThat(((RawValue) valueCaptor.getValue()).rawValue()).isEqualTo(payload);
         assertThat(event.getStatus()).isEqualTo(OutboxStatus.PUBLISHED);
         assertThat(event.getPublishedAt()).isNotNull();
     }
@@ -48,7 +50,6 @@ class OutboxPollerTest {
         OutboxRepository repository = mock(OutboxRepository.class);
         @SuppressWarnings("unchecked")
         KafkaTemplate<String, Object> kafka = mock(KafkaTemplate.class);
-        ObjectMapper mapper = new ObjectMapper();
         UUID userId = UUID.randomUUID();
         OutboxEvent event = pendingEvent(userId, "{}");
 
@@ -57,7 +58,7 @@ class OutboxPollerTest {
         when(kafka.send(eq("user-events"), eq(userId.toString()), any()))
                 .thenReturn(CompletableFuture.failedFuture(new RuntimeException("broker unavailable")));
 
-        OutboxPoller poller = new OutboxPoller(repository, kafka, mapper);
+        OutboxPoller poller = new OutboxPoller(repository, kafka);
         for (int attempt = 0; attempt < OutboxPoller.MAX_ATTEMPTS; attempt++) {
             poller.publishPending();
         }

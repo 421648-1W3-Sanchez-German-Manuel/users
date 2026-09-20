@@ -3,8 +3,7 @@
 This document registers the Kafka contracts owned or consumed by
 `tema-01-users`.
 
-For the Spanish hand-off to Notifications, see
-`KAFKA-EVENTS-PARA-NOTIFICACIONES.md`.
+For the Spanish event hand-off, see `KAFKA-EVENTS.md`.
 
 ## Common envelope
 
@@ -178,7 +177,9 @@ Example:
 
 Unknown fields on the envelope or payload are ignored (`@JsonIgnoreProperties`).
 Unknown event types and unknown versions are ignored safely. Invalid envelopes
-or invalid payloads are rejected before any business state is changed.
+are captured by `ErrorHandlingDeserializer` and recovered by
+`DefaultErrorHandler` without retry (`DeserializationException` is fatal by
+default). Invalid payloads are rejected before any business state is changed.
 
 Example:
 
@@ -215,7 +216,8 @@ Business changes and their events are persisted in the same SQL transaction in
 - `created_at`: event creation time.
 - `published_at`: broker-confirmed publication time, when available.
 
-The poller publishes only `PENDING` rows. It deserializes the stored JSON and
-sends it with `JsonSerializer`. It marks a row `PUBLISHED` after the broker
-acknowledges it. A failed publication remains pending until the fifth failed
-attempt, when it becomes `FAILED` for manual review.
+The poller publishes only `PENDING` rows. It sends the stored envelope as a
+Jackson `RawValue` through `JsonSerializer`, preserving the original JSON
+without a parse/re-serialize round-trip. It marks a row `PUBLISHED` after the
+broker acknowledges it. A failed publication remains pending until the fifth
+failed attempt, when it becomes `FAILED` for manual review.
