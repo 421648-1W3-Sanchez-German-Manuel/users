@@ -404,11 +404,17 @@ El primero es grave por una razón específica de este dominio: **`RF-USR-05e` d
 
 **Outbox:** el evento se **inserta en una tabla** en la misma transacción que el cambio de estado, y un poller lo publica después.
 
-- Tabla `outbox_events`: `event_id` (PK), `topic`, `payload` (JSON), `created_at`, `published_at` nullable, `intentos`.
-- `@Scheduled` cada 2 s: toma los que tienen `published_at IS NULL` con `LIMIT` + `FOR UPDATE SKIP LOCKED` (funciona en MySQL 8), publica, marca.
+- Tabla `outbox_events`: identifiers, aggregate metadata, destination topic,
+  Message Key, complete JSON envelope, status, attempts, and timestamps.
+- `@Scheduled` cada 3 s: toma los que tienen `status = PENDING` con `LIMIT` +
+  `FOR UPDATE SKIP LOCKED` (funciona en MySQL 8), publica y marca. Después de
+  cinco fallos, el estado pasa a `FAILED`.
 - Si Kafka está caído, los eventos se acumulan y salen solos cuando vuelve. **Cero pérdida.**
 
-**El costo honesto:** una tabla, una migración, ~60 líneas de poller, y los eventos pasan de instantáneos a "≤2 s". Vale la pena porque es el espejo exacto de `processed_events`: ya resolvimos la idempotencia del **consumidor** y el lado del **productor** había quedado sin red.
+**El costo honesto:** una tabla, una migración y un poller; los eventos pasan de
+instantáneos a "≤3 s". Vale la pena porque es el espejo exacto de
+`processed_events`: ya resolvimos la idempotencia del **consumidor** y el lado
+del **productor** había quedado sin red.
 
 > `SELECT … FOR UPDATE SKIP LOCKED` es lo que permite más de una instancia sin publicar duplicados. Sin `SKIP LOCKED`, dos pollers se bloquean entre sí.
 
@@ -598,11 +604,16 @@ El listener escribe la fila **en la misma transacción** que el cambio de estado
 
 El espejo de `processed_events`: aquélla da idempotencia al **consumidor**, ésta da entrega garantizada al **productor**.
 
-Campos: `event_id VARCHAR(64)` (PK, el mismo `eventId` del sobre), `topic VARCHAR(255)`, `payload JSON`, `created_at DATETIME(6)`, `published_at DATETIME(6)` **nullable**, `intentos INT`.
+Campos: `outbox_id` (PK), `event_id` (UUID único, el mismo `eventId` del
+sobre), `event_type`, `aggregate_type`, `aggregate_id`, `destination_topic`,
+`message_key`, `payload JSON`, `status`, `attempts`, `created_at` y
+`published_at` nullable.
 
 - El evento se inserta **en la misma transacción** que el cambio de estado que lo origina. Si la transacción hace rollback, el evento no existe: no se puede anunciar algo que no pasó.
-- `OutboxPoller` (`@Scheduled`, cada 2 s) toma un lote con `published_at IS NULL`, lo publica y lo marca.
-- Índice sobre `(published_at, created_at)` para que el poller no escanee la tabla entera.
+- `OutboxPoller` (`@Scheduled`, cada 3 s) toma un lote con `status = PENDING`,
+  lo publica y lo marca `PUBLISHED`.
+- Un fallo incrementa `attempts`; al quinto intento fallido pasa a `FAILED`.
+- Índice sobre `(status, created_at)` para que el poller no escanee la tabla entera.
 
 > 🔴 **El `SELECT` del poller lleva `FOR UPDATE SKIP LOCKED`.** Es lo que permite más de una instancia sin publicar duplicados: cada poller toma filas distintas en vez de bloquearse contra el otro. MySQL 8 lo soporta.
 
@@ -1128,6 +1139,11 @@ Un pico de logins simultáneos (`RF-NFR-03`: 120 alumnos entrando a la vez) gene
 
 ## 13. Kafka · sobre estándar, publicaciones y consumer
 
+> **Current contract source:** [`KAFKA-EVENT-CONTRACTS.md`](KAFKA-EVENT-CONTRACTS.md).
+> It supersedes the historical topic names and event examples in this section.
+> Topics are now domain-oriented, event types use uppercase words separated by
+> hyphens, and every envelope includes `eventVersion`.
+
 ### 13.1 El sobre estándar — **DEC-12**
 
 **Todos** los eventos que se publican al bus siguen este contrato común, fijado a nivel plataforma:
@@ -1135,7 +1151,8 @@ Un pico de logins simultáneos (`RF-NFR-03`: 120 alumnos entrando a la vez) gene
 ```jsonc
 {
   "eventId":   "123e4567-e89b-12d3-a456-426614174000",  // UUID · trazabilidad e idempotencia
-  "eventType": "NOMBRE_DEL_EVENTO",                     // ej. USUARIO_REGISTRADO
+  "eventType": "EVENT-NAME",
+  "eventVersion": 1,
   "timestamp": "2026-09-02T19:30:00Z",                  // ISO 8601, UTC
   "producer":  "tema-01-users",                         // DEC-12
   "payload":   { }                                      // específico de cada evento
@@ -1150,6 +1167,7 @@ El contrato común garantiza **consistencia en la envoltura** (`eventId`, `event
 public record EventEnvelope<T>(
         UUID eventId,          // generado al publicar
         String eventType,
+        int eventVersion,
         Instant timestamp,     // Instant.now() al publicar
         String producer,       // siempre "tema-01-users"
         T payload) {}
@@ -1342,6 +1360,7 @@ public class AuthController { … }
 | `POST /api/users/public/auth/password/reset/confirm` | `auth/` | **confirmar** — consume el token de 1 uso y cambia la password · **DEC-16** |
 | `POST /api/users/public/registration/student` | `users/` | Alta de STUDENT (dominio institucional + código de invitación) |
 | `POST /api/users/public/registration/professor` | `users/` | Alta de PROFESSOR (contra whitelist) |
+| `POST /api/users/public/registration/gestor` | `users/` | Alta de GESTOR (contra whitelist, mismo flujo que PROFESSOR) |
 | `POST /api/users/public/registration/activate` | `users/` | **DEC-33** · activación por **enlace** de un solo uso; el body lleva el `token` que la pantalla del frontend saca del query string |
 | `POST /api/users/public/registration/resend-activation` | `users/` | **DEC-33** · reenvía el enlace de activación e **invalida el anterior**. Cierra INC-20 |
 | `POST /api/users/public/auth/2fa/resend` | `auth/` | **DEC-33** · reenvía el código de 2FA. Cierra INC-20 |
@@ -1356,16 +1375,17 @@ public class AuthController { … }
 | `POST /api/users/auth/password/change` | `auth/` | autenticado | exento de PASSWORD |
 | `GET /api/users/me` | `users/` | autenticado | **exento de los 3** |
 | `PATCH /api/users/me/onboarding` | `users/` | autenticado | exento de ONBOARDING |
+| `GET /api/users` | `users/` | `hasAnyRole('ADMIN', 'GESTOR')` | los 3 · el GESTOR ve **solo PROFESSOR/GESTOR** (capa 2) |
 | `POST /api/users` | `users/` | `hasRole('ADMIN')` | los 3 |
-| `DELETE /api/users/{id}` | `users/` | `hasRole('ADMIN')` | los 3 |
-| `PATCH /api/users/{id}/role` | `users/` | `hasRole('ADMIN')` | los 3 |
+| `DELETE /api/users/{id}` | `users/` | `hasAnyRole('ADMIN', 'GESTOR')` | los 3 · el GESTOR solo puede dar de baja PROFESSOR/GESTOR, nunca a si mismo (capa 2) |
+| `PATCH /api/users/{id}/role` | `users/` | `hasAnyRole('ADMIN', 'GESTOR')` | los 3 · el GESTOR no puede otorgar/tocar el rol ADMIN ni tocar STUDENT (capa 2) |
 | `GET /api/users/profile/{id}` | `users/` | `hasRole('MS')` + scope | **N/A** (token de servicio) |
-| `POST /api/users/whitelist` | `users/` | `hasRole('ADMIN')` | los 3 · **DEC-29** |
-| `GET /api/users/whitelist` | `users/` | `hasRole('ADMIN')` | los 3 · **DEC-29** |
-| `DELETE /api/users/whitelist/{id}` | `users/` | `hasRole('ADMIN')` | los 3 · **DEC-29** |
+| `POST /api/users/whitelist` | `users/` | `hasAnyRole('ADMIN', 'GESTOR')` | los 3 · **DEC-29** · `role` opcional, default `PROFESSOR` |
+| `GET /api/users/whitelist` | `users/` | `hasAnyRole('ADMIN', 'GESTOR')` | los 3 · **DEC-29** |
+| `DELETE /api/users/whitelist/{id}` | `users/` | `hasAnyRole('ADMIN', 'GESTOR')` | los 3 · **DEC-29** |
 | `POST /api/users/whitelist/requests` | `users/` | `hasRole('PROFESSOR')` | los 3 · **DEC-29** · crea la solicitud |
-| `GET /api/users/whitelist/requests` | `users/` | `hasAnyRole('ADMIN','PROFESSOR')` | los 3 · **DEC-29** · el PROFESSOR ve **solo las suyas** (capa 2) |
-| `PATCH /api/users/whitelist/requests/{id}` | `users/` | `hasRole('ADMIN')` | los 3 · **DEC-29** · aprobar / rechazar |
+| `GET /api/users/whitelist/requests` | `users/` | `hasAnyRole('ADMIN', 'GESTOR')` | los 3 · **DEC-29** · cola completa, pendientes y resueltas |
+| `PATCH /api/users/whitelist/requests/{id}` | `users/` | `hasAnyRole('ADMIN', 'GESTOR')` | los 3 · **DEC-29** · aprobar / rechazar |
 
 ### 14.3 Lo que desapareció
 
@@ -1426,6 +1446,18 @@ En `users-service` **no hay una regla que codear**: se cumple por diseño, porqu
 
 La única forma de que el dato de un usuario llegue a otro contexto es vía un microservicio (Cursos, Desafíos) que lo pide con token de servicio para resolver su propia lógica — no es la persona consultando directamente. **Queda anotado como derivado del diseño, no como capa 2 nueva.** Ver §18 / INC-10: un documento describe un flujo que lo contradice.
 
+### 15.5 Ventana de staleness del rol en el token
+
+`PATCH /api/users/{id}/role` (y la baja, `DELETE /api/users/{id}`) cambian el estado en la
+base **de inmediato**, pero el `roles`/`accountStatus` que ya lleva el access token del
+afectado no se actualiza hasta que ese token expire — ni el Gateway ni el resto de los
+microservicios vuelven a consultar `users-service` por request, solo validan firma y `exp`
+(`access-ttl: PT10M` en `application.yml`). Durante esa ventana (hasta 10 minutos) la cuenta
+sigue autorizada con el rol/estado viejo en toda la plataforma, aunque `users-service` ya la
+vea actualizada. No hay revocación activa de access tokens: es la misma decisión de diseño
+que el refresh rotativo de `DEC-22` acepta para el resto del sistema, y queda documentada acá
+como limitación conocida, no como algo pendiente de arreglar.
+
 ---
 
 ## 16. Reglas de negocio propias
@@ -1466,6 +1498,27 @@ public record BajaReforzadaRequest(
 ```
 
 Las dos capas son **responsabilidades distintas en módulos distintos**, y ambas son bloqueantes: `auth/` valida que quien pide la baja es realmente ese ADMIN (no alguien con su sesión abierta); `users/` valida que la baja no rompa la plataforma.
+
+**Alcance · el paso 1 corre para CUALQUIER objetivo, no solo ADMIN.** Esta
+sección se escribió como "baja reforzada de ADMIN" y durante un tiempo el
+código solo reforzaba cuando el objetivo era ADMIN. Se corrigió: el paso 1
+protege contra una **sesión robada**, y eso no depende de a quién se esté dando
+de baja — una sesión robada bajando cincuenta cuentas STUDENT no es un
+incidente menor que una bajando un solo ADMIN. La baja es lógica, pero cada una
+de esas personas queda afuera hasta que alguien lo note.
+
+Lo que sí sigue dependiendo del rol del objetivo es el **paso 2**: el lock de
+último ADMIN es una regla sobre la integridad de la plataforma, no sobre la
+identidad de quien pide.
+
+La pantalla (`user-delete`) ya hacía los tres pasos para cualquier objetivo y
+ya recolectaba un código real, así que ampliar el alcance no cambió nada del
+front: solo hizo que el servicio validara lo que la UI venía mandando.
+
+**Y el `twoFactorCode` efectivamente se verifica.** Estuvo declarado
+`@NotBlank` en el request desde el principio sin que nada lo leyera: cualquier
+cadena de seis caracteres pasaba. Si se vuelve a tocar este método, el test que
+lo cubre es `AdminRulesIT.deactivation_requires_a_valid_second_factor`.
 
 ### 16.4 Recuperación de ADMIN · `RF-ROL-04` · **DEC-11**
 
@@ -2034,7 +2087,7 @@ Del manifiesto §12.2, más lo que agregan las decisiones de §18.0.
 | 30 | **(DEC-42)** Al 6º **fallo** de login sobre el mismo email dentro de la ventana, la respuesta es `429` con `Retry-After`; un login **exitoso** no consume presupuesto | `RateLimitLoginIT` con Testcontainers Redis |
 | 31 | **(DEC-44)** `TokenContractTest`: **todo** token de persona lleva `iss`, `sub`, `roles`, `type`, `jti`, `sid`, `est`, `pwd`, `onb`, `iat`, `exp`; todo token de servicio lleva `iss`, `sub`, `roles`, `type`, `aud`, `scope`, `jti`, `iat`, `exp`. Si falta uno, falla nombrando el claim | es lo que reemplaza al flag de despliegue del Gateway |
 | 32 | **(DEC-45a)** No existe forma de construir un `TokenClaims` sin los claims obligatorios | revisión de la firma del builder + `TokenContractTest` como segunda línea |
-| 33 | **(DEC-45b)** Con **Kafka detenido**, un alta de alumno **igual completa** y el evento queda en `outbox_events` con `published_at IS NULL`; al levantar Kafka, el poller lo publica **sin intervención** | `OutboxIT` con Testcontainers — parar el contenedor de Kafka, hacer el alta, levantarlo, esperar |
+| 33 | **(DEC-45b)** Con **Kafka detenido**, un alta de alumno **igual completa** y el evento queda en `outbox_events` con `status = PENDING`; al levantar Kafka, el poller lo publica **sin intervención** | `OutboxIT` con Testcontainers — parar el contenedor de Kafka, hacer el alta, levantarlo, esperar |
 | 34 | **(DEC-45c)** Un test parametrizado recorre **todo** el enum `EmailType` y verifica que cada plantilla existe y renderiza sin variables sin resolver | `EmailTypeTest` — hoy esto no se puede escribir sin listar los seis a mano |
 | 35 | **(DEC-45d)** Toda transición fuera de la tabla de §9.2 lanza `InvalidTransitionException`; en particular **`DEACTIVATED` no transiciona a nada** | `TransitionsTest` parametrizado sobre el producto cartesiano de estados |
 

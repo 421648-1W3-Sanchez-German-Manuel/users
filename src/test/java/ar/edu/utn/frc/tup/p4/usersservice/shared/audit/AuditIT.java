@@ -109,7 +109,7 @@ class AuditIT extends AbstractIntegrationTest {
     void whitelist_and_request_updates_archive_the_previous_state() {
         UUID actor = UUID.randomUUID();
         EmailWhitelist entry = whitelist.saveAndFlush(
-                EmailWhitelist.create(uniqueEmail("whitelist"), actor));
+                EmailWhitelist.create(uniqueEmail("whitelist"), Role.PROFESSOR, actor));
         WhitelistRequest request = whitelistRequests.saveAndFlush(
                 WhitelistRequest.create(uniqueEmail("request"), actor, "Course access"));
 

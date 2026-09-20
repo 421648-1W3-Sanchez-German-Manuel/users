@@ -1,5 +1,6 @@
 package ar.edu.utn.frc.tup.p4.usersservice.shared.events;
 
+import ar.edu.utn.frc.tup.p4.usersservice.shared.events.entities.OutboxStatus;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -22,6 +23,7 @@ public class OutboxPoller {
 
     private static final Logger LOG = LoggerFactory.getLogger(OutboxPoller.class);
     private static final int BATCH_SIZE = 100;
+    static final int MAX_ATTEMPTS = 5;
 
     private final OutboxRepository outbox;
     private final KafkaTemplate<String, String> kafka;
@@ -31,28 +33,32 @@ public class OutboxPoller {
         this.kafka = kafka;
     }
 
-    @Scheduled(fixedDelayString = "PT2S")
+    @Scheduled(fixedDelayString = "${users.outbox.polling-delay:PT3S}")
     @Transactional
-    public void publicarPendientes() {
-        var pendingEvents = outbox.takePending(Limit.of(BATCH_SIZE));
+    public void publishPending() {
+        var pendingEvents = outbox.takeByStatus(OutboxStatus.PENDING, Limit.of(BATCH_SIZE));
         for (var event : pendingEvents) {
             try {
-                kafka.send(event.getTopic(), event.getEventId(), event.getPayload()).get();
+                kafka.send(
+                        event.getDestinationTopic(),
+                        event.getMessageKey(),
+                        event.getPayload()).get();
                 event.markPublished();
             } catch (InterruptedException exception) {
                 Thread.currentThread().interrupt();
                 LOG.warn(
                         "OUTBOX_PUBLISH_INTERRUPTED eventId={} topic={}",
                         event.getEventId(),
-                        event.getTopic());
+                        event.getDestinationTopic());
                 return;
             } catch (Exception exception) {
-                event.recordFailedAttempt();
+                event.recordFailedAttempt(MAX_ATTEMPTS);
                 LOG.warn(
-                        "OUTBOX_PUBLISH_FAILED eventId={} topic={} attempts={}",
+                        "OUTBOX_PUBLISH_FAILED eventId={} topic={} attempts={} status={}",
                         event.getEventId(),
-                        event.getTopic(),
+                        event.getDestinationTopic(),
                         event.getAttempts(),
+                        event.getStatus(),
                         exception);
             }
         }

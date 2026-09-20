@@ -5,6 +5,7 @@ import ar.edu.utn.frc.tup.p4.usersservice.shared.events.OutboxRepository;
 import ar.edu.utn.frc.tup.p4.usersservice.shared.web.ApiException;
 import ar.edu.utn.frc.tup.p4.usersservice.users.entities.EmailWhitelist;
 import ar.edu.utn.frc.tup.p4.usersservice.users.enums.AccountStatus;
+import ar.edu.utn.frc.tup.p4.usersservice.users.enums.Role;
 import ar.edu.utn.frc.tup.p4.usersservice.users.repositories.EmailWhitelistRepository;
 import ar.edu.utn.frc.tup.p4.usersservice.users.repositories.UserRepository;
 import ar.edu.utn.frc.tup.p4.usersservice.users.services.RegistrationService;
@@ -20,37 +21,38 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
- * DoD #2: alta de alumno con codigo de invitacion en el mismo form, la cuenta
- * pasa PENDING_EMAIL -> PENDING_COURSE al activar el mail, y se publica
- * ALUMNO_REGISTRADO recien ahi (DEC-34). DoD #17 (mitad de alta): sin
- * tycAceptado, 400 (DEC-11) — la otra mitad (baja de ADMIN) es de AdminRulesIT.
+ * DoD #2: student registration includes the invitation code in the same form;
+ * the account moves from PENDING_EMAIL to PENDING_COURSE when the email is
+ * activated, and STUDENT-REGISTERED is published only then (DEC-34). DoD #17
+ * (registration half): without accepted terms, 400 (DEC-11); the other half
+ * (ADMIN deactivation) belongs to AdminRulesIT.
  */
 @Import(TestActivationSpy.Config.class)
 class RegistrationIT extends AbstractIntegrationTest {
 
-    @Autowired RegistrationService registro;
+    @Autowired RegistrationService registration;
     @Autowired UserRepository repo;
     @Autowired EmailWhitelistRepository whitelist;
     @Autowired OutboxRepository outbox;
     @Autowired TestActivationSpy mailSpy;
     @Autowired ObjectMapper mapper;
 
-    private String emailUnico(String prefijo) {
-        return prefijo + "-" + UUID.randomUUID() + "@utn.edu.ar";
+    private String uniqueEmail(String prefix) {
+        return prefix + "-" + UUID.randomUUID() + "@utn.edu.ar";
     }
 
     /**
-     * MySQL normaliza el JSON al guardarlo (agrega espacios despues de ":" y
-     * ","), asi que el string leido con findAll() no es byte a byte el que
-     * escribio Jackson al publicar. Comparar por substring literal es fragil;
-     * parseamos el envelope de verdad.
+     * MySQL normalizes JSON when storing it (adding spaces after ":" and ","),
+     * so the string read with findAll() is not byte-for-byte what Jackson wrote
+     * when publishing. Comparing a literal substring is brittle; parse the
+     * actual envelope instead.
      */
-    private boolean outboxTieneAlumnoRegistrado(String userId) {
+    private boolean outboxHasStudentRegistered(String userId) {
         return outbox.findAll().stream().anyMatch(e -> {
             try {
-                var nodo = mapper.readTree(e.getPayload());
-                return "ALUMNO_REGISTRADO".equals(nodo.path("eventType").asText())
-                        && userId.equals(nodo.path("payload").path("userId").asText());
+                var node = mapper.readTree(e.getPayload());
+                return "STUDENT-REGISTERED".equals(node.path("eventType").asText())
+                        && userId.equals(node.path("payload").path("userId").asText());
             } catch (Exception ex) {
                 throw new IllegalStateException(ex);
             }
@@ -58,52 +60,71 @@ class RegistrationIT extends AbstractIntegrationTest {
     }
 
     @Test
-    void alta_de_alumno_queda_PENDING_EMAIL_y_no_publica_ALUMNO_REGISTRADO_todavia() {
-        String email = emailUnico("alta");
-        registro.registrarAlumno("Ana", "Perez", "76543", email,
-                "passwordvalida1", "PROG4-2026-A1", "v1");
+    void student_registration_remains_PENDING_EMAIL_and_does_not_publish_STUDENT_REGISTERED_yet() {
+        String email = uniqueEmail("registration");
+        registration.registerStudent("Ana", "Perez", "76543", email,
+                "validpassword1", "PROG4-2026-A1", "v1");
 
         String userId = repo.findByEmailAndDeletedAtIsNull(email).orElseThrow().getId().toString();
         assertThat(repo.findByEmailAndDeletedAtIsNull(email)).get()
                 .extracting(u -> u.getAccountStatus()).isEqualTo(AccountStatus.PENDING_EMAIL);
 
-        // DEC-34: el mail de activacion ya se encolo, pero el evento de negocio
-        // (identificado por el userId de ESTA cuenta) todavia no existe.
-        assertThat(outboxTieneAlumnoRegistrado(userId)).isFalse();
+        // DEC-34: the activation email is already queued, but the business event
+        // identified by THIS account's userId does not exist yet.
+        assertThat(outboxHasStudentRegistered(userId)).isFalse();
     }
 
     @Test
-    void al_activar_pasa_a_PENDING_COURSE_y_recien_ahi_publica_ALUMNO_REGISTRADO() {
-        String email = emailUnico("evento");
-        registro.registrarAlumno("Ana", "Perez", "76543", email,
-                "passwordvalida1", "PROG4-2026-A1", "v1");
+    void activation_moves_to_PENDING_COURSE_and_only_then_publishes_STUDENT_REGISTERED() {
+        String email = uniqueEmail("event");
+        registration.registerStudent("Ana", "Perez", "76543", email,
+                "validpassword1", "PROG4-2026-A1", "v1");
         String userId = repo.findByEmailAndDeletedAtIsNull(email).orElseThrow().getId().toString();
 
-        registro.activate(mailSpy.ultimoTokenActivacion());
+        registration.activate(mailSpy.latestActivationToken());
 
         assertThat(repo.findByEmailAndDeletedAtIsNull(email)).get()
                 .extracting(u -> u.getAccountStatus()).isEqualTo(AccountStatus.PENDING_COURSE);
-        assertThat(outboxTieneAlumnoRegistrado(userId))
-                .as("el ALUMNO_REGISTRADO tiene que existir despues de activar, con el userId de esta cuenta")
+        assertThat(outboxHasStudentRegistered(userId))
+                .as("STUDENT-REGISTERED must exist after activation with this account userId")
                 .isTrue();
     }
 
     @Test
-    void profesor_en_la_whitelist_se_registra_igual_que_un_alumno() {
-        String email = emailUnico("prof");
-        whitelist.saveAndFlush(EmailWhitelist.create(email, UUID.randomUUID()));
+    void a_whitelisted_professor_registers_like_a_student() {
+        String email = uniqueEmail("professor");
+        whitelist.saveAndFlush(EmailWhitelist.create(email, Role.PROFESSOR, UUID.randomUUID()));
 
-        registro.registrarProfesor("Juan", "Diaz", email, "passwordvalida1", "v1");
+        registration.registerProfessor("Juan", "Diaz", email, "validpassword1", "v1");
 
         assertThat(repo.findByEmailAndDeletedAtIsNull(email)).get()
                 .extracting(u -> u.getAccountStatus()).isEqualTo(AccountStatus.PENDING_EMAIL);
     }
 
     @Test
-    void profesor_fuera_de_la_whitelist_es_rechazado() {
-        String email = emailUnico("noprof");
+    void a_whitelisted_GESTOR_registers_like_a_student() {
+        String email = uniqueEmail("manager");
+        whitelist.saveAndFlush(EmailWhitelist.create(email, Role.GESTOR, UUID.randomUUID()));
 
-        assertThatThrownBy(() -> registro.registrarProfesor("Juan", "Diaz", email, "passwordvalida1", "v1"))
+        registration.registerManager("Gustavo", "Estor", email, "validpassword1", "v1");
+
+        assertThat(repo.findByEmailAndDeletedAtIsNull(email)).get()
+                .extracting(u -> u.getAccountStatus()).isEqualTo(AccountStatus.PENDING_EMAIL);
+        assertThat(repo.findByEmailAndDeletedAtIsNull(email)).get()
+                .extracting(u -> u.getRole()).isEqualTo(Role.GESTOR);
+    }
+
+    /**
+     * An email whitelisted only as PROFESSOR does not enable GESTOR
+     * registration: each role has its own row
+     * (existsByEmailAndRoleAndDeletedAtIsNull).
+     */
+    @Test
+    void a_GESTOR_with_a_PROFESSOR_whitelist_entry_is_rejected() {
+        String email = uniqueEmail("professor-not-manager");
+        whitelist.saveAndFlush(EmailWhitelist.create(email, Role.PROFESSOR, UUID.randomUUID()));
+
+        assertThatThrownBy(() -> registration.registerManager("Gustavo", "Estor", email, "validpassword1", "v1"))
                 .isInstanceOf(ApiException.class)
                 .satisfies(ex -> assertThat(((ApiException) ex).getStatus()).isEqualTo(HttpStatus.FORBIDDEN));
 
@@ -111,16 +132,27 @@ class RegistrationIT extends AbstractIntegrationTest {
     }
 
     @Test
-    void alta_sin_aceptar_los_TyC_vigentes_da_400() {
-        String email = emailUnico("sintyc");
+    void a_professor_outside_the_whitelist_is_rejected() {
+        String email = uniqueEmail("not-professor");
 
-        assertThatThrownBy(() -> registro.registrarAlumno("Ana", "Perez", "76543", email,
-                "passwordvalida1", "PROG4-2026-A1", null))
+        assertThatThrownBy(() -> registration.registerProfessor("Juan", "Diaz", email, "validpassword1", "v1"))
+                .isInstanceOf(ApiException.class)
+                .satisfies(ex -> assertThat(((ApiException) ex).getStatus()).isEqualTo(HttpStatus.FORBIDDEN));
+
+        assertThat(repo.findByEmailAndDeletedAtIsNull(email)).isEmpty();
+    }
+
+    @Test
+    void registration_without_accepting_the_current_terms_returns_400() {
+        String email = uniqueEmail("no-terms");
+
+        assertThatThrownBy(() -> registration.registerStudent("Ana", "Perez", "76543", email,
+                "validpassword1", "PROG4-2026-A1", null))
                 .isInstanceOf(ApiException.class)
                 .satisfies(ex -> assertThat(((ApiException) ex).getStatus()).isEqualTo(HttpStatus.BAD_REQUEST));
 
-        assertThatThrownBy(() -> registro.registrarAlumno("Ana", "Perez", "76543", email,
-                "passwordvalida1", "PROG4-2026-A1", "v0-vieja"))
+        assertThatThrownBy(() -> registration.registerStudent("Ana", "Perez", "76543", email,
+                "validpassword1", "PROG4-2026-A1", "v0-old"))
                 .isInstanceOf(ApiException.class)
                 .satisfies(ex -> assertThat(((ApiException) ex).getStatus()).isEqualTo(HttpStatus.BAD_REQUEST));
 
@@ -128,32 +160,32 @@ class RegistrationIT extends AbstractIntegrationTest {
     }
 
     @Test
-    void una_password_que_no_cumple_la_politica_da_400() {
-        String email = emailUnico("passdebil");
+    void a_password_that_does_not_meet_the_policy_returns_400() {
+        String email = uniqueEmail("weak-password");
 
-        assertThatThrownBy(() -> registro.registrarAlumno("Ana", "Perez", "76543", email,
-                "corta", "PROG4-2026-A1", "v1"))
+        assertThatThrownBy(() -> registration.registerStudent("Ana", "Perez", "76543", email,
+                "short", "PROG4-2026-A1", "v1"))
                 .isInstanceOf(ApiException.class)
                 .satisfies(ex -> assertThat(((ApiException) ex).getStatus()).isEqualTo(HttpStatus.BAD_REQUEST));
     }
 
     @Test
-    void dos_altas_con_el_mismo_email_activo_fallan_con_conflicto() {
-        String email = emailUnico("repetido");
-        registro.registrarAlumno("Ana", "Perez", "76543", email,
-                "passwordvalida1", "PROG4-2026-A1", "v1");
+    void two_registrations_with_the_same_active_email_fail_with_conflict() {
+        String email = uniqueEmail("duplicate");
+        registration.registerStudent("Ana", "Perez", "76543", email,
+                "validpassword1", "PROG4-2026-A1", "v1");
 
-        assertThatThrownBy(() -> registro.registrarAlumno("Otro", "Nombre", "11111", email,
-                "passwordvalida1", "PROG4-2026-A1", "v1"))
+        assertThatThrownBy(() -> registration.registerStudent("Other", "Name", "11111", email,
+                "validpassword1", "PROG4-2026-A1", "v1"))
                 .isInstanceOf(ApiException.class)
                 .satisfies(ex -> assertThat(((ApiException) ex).getStatus()).isEqualTo(HttpStatus.CONFLICT));
     }
 
     @Test
-    void el_email_se_normaliza_a_minusculas_al_registrarse() {
-        String email = emailUnico("mayus");
-        registro.registrarAlumno("Ana", "Perez", "76543", email.toUpperCase(),
-                "passwordvalida1", "PROG4-2026-A1", "v1");
+    void email_is_normalized_to_lowercase_during_registration() {
+        String email = uniqueEmail("uppercase");
+        registration.registerStudent("Ana", "Perez", "76543", email.toUpperCase(),
+                "validpassword1", "PROG4-2026-A1", "v1");
 
         assertThat(repo.findByEmailAndDeletedAtIsNull(email)).isPresent();
     }

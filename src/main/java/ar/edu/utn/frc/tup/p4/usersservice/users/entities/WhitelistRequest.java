@@ -59,7 +59,7 @@ public class WhitelistRequest extends BaseAuditableEntity {
     public void reject(UUID admin, String rejectionReason) {
         requirePending();
         if (rejectionReason == null || rejectionReason.isBlank()) {
-            throw new IllegalArgumentException("El rechazo exige reason");
+            throw new IllegalArgumentException("A rejection reason is required");
         }
         this.status = RequestStatus.REJECTED;
         this.resolvedBy = admin;
@@ -69,7 +69,7 @@ public class WhitelistRequest extends BaseAuditableEntity {
 
     private void requirePending() {
         if (this.status != RequestStatus.PENDING) {
-            throw new IllegalStateException("La request ya fue resuelta: " + this.status);
+            throw new IllegalStateException("The request has already been resolved: " + this.status);
         }
     }
 

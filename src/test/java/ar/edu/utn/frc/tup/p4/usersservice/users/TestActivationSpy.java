@@ -10,21 +10,22 @@ import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Map;
+import java.util.UUID;
 
 /**
- * Captura el token del enlace de activacion.
+ * Captures the activation link token.
  *
- * Los tres spies declaran un @Primary (NotificationEventPublisher o
- * SecondFactorProvider), asi que NINGUN test puede importar dos Config a la
- * vez. No hace falta: ningun flujo necesita capturar el token de reset y el de
- * activacion en el mismo test.
+ * All three spies declare a @Primary (NotificationEventPublisher or
+ * SecondFactorProvider), so NO test can import two Config classes at once.
+ * There is no need to: no flow needs to capture both the reset and activation
+ * tokens in the same test.
  */
 public class TestActivationSpy extends NotificationEventPublisher {
 
     private final NotificationEventPublisher real;
-    private volatile String ultimoTokenActivacion;
+    private volatile String latestActivationToken;
 
-    // El constructor del padre no se usa: toda la logica la delega en real.
+    // The parent constructor is unused: all logic is delegated to the real publisher.
     public TestActivationSpy(NotificationEventPublisher real) {
         super(null, null, null);
         this.real = real;
@@ -32,25 +33,25 @@ public class TestActivationSpy extends NotificationEventPublisher {
 
     @Override
     @Transactional(propagation = Propagation.MANDATORY)
-    public void enviar(EmailType tipo, String to, Map<String, Object> vars) {
-        real.enviar(tipo, to, vars);
-        if (tipo == EmailType.ACCOUNT_ACTIVATION) {
-            this.ultimoTokenActivacion = tokenDe(vars);
+    public void send(EmailType type, UUID userId, String to, Map<String, Object> vars) {
+        real.send(type, userId, to, vars);
+        if (type == EmailType.ACCOUNT_ACTIVATION) {
+            this.latestActivationToken = tokenFrom(vars);
         }
     }
 
     /**
-     * El enlace se arma al renderizar y apunta al FRONTEND, no a la API
-     * (RF-USR-06): de ahi se saca el query param, no del cuerpo del mail.
+     * The link is built while rendering and points to the FRONTEND, not the API
+     * (RF-USR-06), so the query parameter is read from there, not the mail body.
      */
-    private static String tokenDe(Map<String, Object> vars) {
-        String enlace = (String) vars.get("enlace");
-        if (enlace == null) return null;
-        int idx = enlace.indexOf("token=");
-        return idx >= 0 ? enlace.substring(idx + "token=".length()) : null;
+    private static String tokenFrom(Map<String, Object> vars) {
+        String link = (String) vars.get("enlace");
+        if (link == null) return null;
+        int index = link.indexOf("token=");
+        return index >= 0 ? link.substring(index + "token=".length()) : null;
     }
 
-    public String ultimoTokenActivacion() { return ultimoTokenActivacion; }
+    public String latestActivationToken() { return latestActivationToken; }
 
     @TestConfiguration
     public static class Config {

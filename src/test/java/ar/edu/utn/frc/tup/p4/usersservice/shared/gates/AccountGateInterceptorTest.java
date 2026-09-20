@@ -34,99 +34,102 @@ class AccountGateInterceptorTest {
     UUID userId = UUID.randomUUID();
 
     static class Handlers {
-        public void protegido() { }
-        @SkipAccountGate({SkipAccountGate.Gate.ESTADO, SkipAccountGate.Gate.PASSWORD,
+        public void protectedEndpoint() { }
+        @SkipAccountGate({SkipAccountGate.Gate.ACCOUNT_STATUS, SkipAccountGate.Gate.PASSWORD,
                           SkipAccountGate.Gate.ONBOARDING})
         public void me() { }
         /** The same exemptions as POST /api/users/auth/password/change. */
         @SkipAccountGate({SkipAccountGate.Gate.PASSWORD, SkipAccountGate.Gate.ONBOARDING})
-        public void cambioPassword() { }
+        public void passwordChange() { }
         /** The same exemptions as PATCH /api/users/me/onboarding. */
         @SkipAccountGate({SkipAccountGate.Gate.ONBOARDING, SkipAccountGate.Gate.PASSWORD})
         public void onboarding() { }
     }
 
-    private HandlerMethod handler(String nombre) throws Exception {
-        Method m = Handlers.class.getMethod(nombre);
+    private HandlerMethod handler(String methodName) throws Exception {
+        Method m = Handlers.class.getMethod(methodName);
         return new HandlerMethod(new Handlers(), m);
     }
 
-    private void autenticarPersona() {
+    private void authenticatePerson() {
         SecurityContextHolder.getContext().setAuthentication(
                 UsernamePasswordAuthenticationToken.authenticated(
                         new GatewayPrincipal("user", userId, null), null, List.of()));
     }
 
-    private User usuario(AccountStatus status, boolean debeCambiar, boolean firstLogin) {
+    private User user(AccountStatus status, boolean mustChangePassword, boolean firstLogin) {
         User u = User.create("Ana", "P", "a@utn.edu.ar", "$2a$12$h", Role.STUDENT, "v1");
         u.forceStatusForTest(status);
-        if (debeCambiar) u.requirePasswordChange();
-        if (!firstLogin) u.completeOnboarding("ana", null, true);
+        if (mustChangePassword) u.requirePasswordChange();
+        if (!firstLogin) {
+            u.completeOnboarding(true);
+            u.clearFirstLogin();
+        }
         return u;
     }
 
     @BeforeEach
-    void setUp() { autenticarPersona(); }
+    void setUp() { authenticatePerson(); }
 
     @AfterEach
-    void limpiar() { SecurityContextHolder.clearContext(); }
+    void cleanUp() { SecurityContextHolder.clearContext(); }
 
     @Test
-    void cuenta_pendiente_bloquea_una_ruta_protegida() throws Exception {
+    void a_pending_account_blocks_a_protected_endpoint() throws Exception {
         when(repo.findByIdAndDeletedAtIsNull(any()))
-                .thenReturn(Optional.of(usuario(AccountStatus.PENDING_COURSE, false, false)));
+                .thenReturn(Optional.of(user(AccountStatus.PENDING_COURSE, false, false)));
 
         assertThatThrownBy(() -> interceptor.preHandle(
-                new MockHttpServletRequest(), new MockHttpServletResponse(), handler("protegido")))
+                new MockHttpServletRequest(), new MockHttpServletResponse(), handler("protectedEndpoint")))
                 .isInstanceOf(ApiException.class)
                 .satisfies(e -> assertThat(((ApiException) e).getExtras())
                         .containsEntry("accountStatus", "PENDING_COURSE"));
     }
 
     @Test
-    void GET_me_atraviesa_los_tres_gates() throws Exception {
+    void GET_me_passes_through_all_three_gates() throws Exception {
         // This is how the frontend finds out WHAT the account is missing
-        // persona. Si tambien estuviera bloqueada, no habria forma de saberlo.
+        // for the person. If it were also blocked, there would be no way to know.
         when(repo.findByIdAndDeletedAtIsNull(any()))
-                .thenReturn(Optional.of(usuario(AccountStatus.PENDING_COURSE, true, true)));
+                .thenReturn(Optional.of(user(AccountStatus.PENDING_COURSE, true, true)));
 
         assertThat(interceptor.preHandle(
                 new MockHttpServletRequest(), new MockHttpServletResponse(), handler("me"))).isTrue();
     }
 
     @Test
-    void onboarding_pendiente_bloquea_aunque_la_cuenta_este_ACTIVA() throws Exception {
-        // Criterio de DoD #7.
+    void pending_onboarding_blocks_even_when_the_account_is_ACTIVE() throws Exception {
+        // DoD criterion #7.
         when(repo.findByIdAndDeletedAtIsNull(any()))
-                .thenReturn(Optional.of(usuario(AccountStatus.ACTIVE, false, true)));
+                .thenReturn(Optional.of(user(AccountStatus.ACTIVE, false, true)));
 
         assertThatThrownBy(() -> interceptor.preHandle(
-                new MockHttpServletRequest(), new MockHttpServletResponse(), handler("protegido")))
+                new MockHttpServletRequest(), new MockHttpServletResponse(), handler("protectedEndpoint")))
                 .isInstanceOf(ApiException.class)
                 .hasMessageContaining("onboarding");
     }
 
     @Test
-    void las_dos_salidas_funcionan_con_los_dos_gates_pendientes() throws Exception {
-        // RF-USR-01. El ADMIN inicial nace con mustChangePassword Y firstLogin
-        // set to true. If each endpoint exempted only ONE gate, the password one
-        // would be cut by onboarding and the onboarding one by password: the account
-        // queda encerrada y el requisito es inalcanzable.
+    void both_exit_endpoints_work_with_both_gates_pending() throws Exception {
+        // RF-USR-01. The initial ADMIN starts with mustChangePassword AND firstLogin
+        // set to true. If each endpoint exempted only ONE gate, onboarding would
+        // block the password endpoint and password would block onboarding, leaving
+        // the account locked and the requirement impossible to satisfy.
         when(repo.findByIdAndDeletedAtIsNull(any()))
-                .thenReturn(Optional.of(usuario(AccountStatus.ACTIVE, true, true)));
+                .thenReturn(Optional.of(user(AccountStatus.ACTIVE, true, true)));
 
         assertThat(interceptor.preHandle(new MockHttpServletRequest(),
-                new MockHttpServletResponse(), handler("cambioPassword"))).isTrue();
+                new MockHttpServletResponse(), handler("passwordChange"))).isTrue();
         assertThat(interceptor.preHandle(new MockHttpServletRequest(),
                 new MockHttpServletResponse(), handler("onboarding"))).isTrue();
     }
 
     @Test
-    void las_dos_salidas_siguen_respetando_el_gate_de_estado() throws Exception {
+    void both_exit_endpoints_still_respect_the_account_status_gate() throws Exception {
         // What is NOT relaxed: an account that is not ACTIVE completes no
         // onboarding and changes no password. They only unblock each other.
         when(repo.findByIdAndDeletedAtIsNull(any()))
-                .thenReturn(Optional.of(usuario(AccountStatus.PENDING_COURSE, true, true)));
+                .thenReturn(Optional.of(user(AccountStatus.PENDING_COURSE, true, true)));
 
         assertThatThrownBy(() -> interceptor.preHandle(new MockHttpServletRequest(),
                 new MockHttpServletResponse(), handler("onboarding")))
@@ -139,25 +142,25 @@ class AccountGateInterceptorTest {
     }
 
     @Test
-    void un_token_de_servicio_no_atraviesa_ningun_gate() throws Exception {
+    void a_service_token_does_not_pass_through_any_gate() throws Exception {
         // An MS does not stand for a person with an account: no status to check.
         SecurityContextHolder.getContext().setAuthentication(
                 UsernamePasswordAuthenticationToken.authenticated(
-                        new GatewayPrincipal("service", null, "cursos-service"), null, List.of()));
+                        new GatewayPrincipal("service", null, "courses-service"), null, List.of()));
 
         assertThat(interceptor.preHandle(
-                new MockHttpServletRequest(), new MockHttpServletResponse(), handler("protegido"))).isTrue();
+                new MockHttpServletRequest(), new MockHttpServletResponse(), handler("protectedEndpoint"))).isTrue();
     }
 
     @Test
-    void el_orden_es_estado_password_onboarding() throws Exception {
+    void gate_order_is_account_status_password_onboarding() throws Exception {
         // With all three active, STATUS wins: it is the most restrictive and the
         // one the frontend has to resolve first.
         when(repo.findByIdAndDeletedAtIsNull(any()))
-                .thenReturn(Optional.of(usuario(AccountStatus.PENDING_EMAIL, true, true)));
+                .thenReturn(Optional.of(user(AccountStatus.PENDING_EMAIL, true, true)));
 
         assertThatThrownBy(() -> interceptor.preHandle(
-                new MockHttpServletRequest(), new MockHttpServletResponse(), handler("protegido")))
+                new MockHttpServletRequest(), new MockHttpServletResponse(), handler("protectedEndpoint")))
                 .isInstanceOf(ApiException.class)
                 .satisfies(e -> {
                     ApiException api = (ApiException) e;

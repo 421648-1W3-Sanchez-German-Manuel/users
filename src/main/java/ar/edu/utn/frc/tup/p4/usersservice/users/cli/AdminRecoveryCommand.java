@@ -28,27 +28,27 @@ public class AdminRecoveryCommand {
     private final UserRepository repo;
     private final PasswordEncoder encoder;
     private final String secretHash;
-    private final String tycVigente;
+    private final String currentTermsVersion;
 
     public AdminRecoveryCommand(UserRepository repo, PasswordEncoder encoder,
-                                @Value("${users.breakglass.secret-hash:}") String secretHash,
-                                @Value("${users.legal.terms-version}") String tycVigente) {
+                                 @Value("${users.breakglass.secret-hash:}") String secretHash,
+                                 @Value("${users.legal.terms-version}") String currentTermsVersion) {
         this.repo = repo;
         this.encoder = encoder;
         this.secretHash = secretHash;
-        this.tycVigente = tycVigente;
+        this.currentTermsVersion = currentTermsVersion;
     }
 
-    public UUID recuperar(String secreto, String firstNames, String lastNames,
-                          String email, String password) {
+    public UUID recover(String secret, String firstNames, String lastNames,
+                        String email, String password) {
         // Point 1 of the RF: installation secret, compared against a hash.
-        if (secretHash.isBlank() || !encoder.matches(secreto, secretHash)) {
+        if (secretHash.isBlank() || !encoder.matches(secret, secretHash)) {
             throw new SecurityException("Invalid installation secret.");
         }
         PasswordPolicy.validate(password);
 
         User admin = User.createAdmin(firstNames, lastNames, email,
-                encoder.encode(password), tycVigente);
+                encoder.encode(password), currentTermsVersion);
         UUID id = repo.saveAndFlush(admin).getId();
 
         alert(id);

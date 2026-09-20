@@ -19,8 +19,9 @@ class SchemaIT extends AbstractIntegrationTest {
                 String.class);
         assertThat(tablas).contains("users", "email_whitelist", "service_clients",
                 "service_client_scopes", "processed_events", "whitelist_requests", "outbox_events",
+                "user_git_provider_links",
                 "users_audit", "email_whitelist_audit", "service_clients_audit",
-                "whitelist_requests_audit");
+                "whitelist_requests_audit", "user_git_provider_links_audit");
     }
 
     @Test
@@ -38,8 +39,9 @@ class SchemaIT extends AbstractIntegrationTest {
     void audited_tables_include_service_actor_and_trace_columns() {
         for (String table : List.of(
                 "users", "email_whitelist", "service_clients", "whitelist_requests",
+                "user_git_provider_links",
                 "users_audit", "email_whitelist_audit", "service_clients_audit",
-                "whitelist_requests_audit")) {
+                "whitelist_requests_audit", "user_git_provider_links_audit")) {
             List<String> columns = jdbc.queryForList(
                     "SELECT column_name FROM information_schema.columns "
                             + "WHERE table_schema = DATABASE() AND table_name = ?",
@@ -85,5 +87,27 @@ class SchemaIT extends AbstractIntegrationTest {
                 "AND NOT (data_type = 'char' AND character_maximum_length = 36)",
                 String.class);
         assertThat(malas).isEmpty();
+    }
+
+    @Test
+    void outbox_has_the_transactional_relay_columns() {
+        List<String> columns = jdbc.queryForList(
+                "SELECT column_name FROM information_schema.columns "
+                        + "WHERE table_schema = DATABASE() AND table_name = 'outbox_events'",
+                String.class);
+
+        assertThat(columns).contains(
+                "outbox_id",
+                "event_id",
+                "event_type",
+                "aggregate_type",
+                "aggregate_id",
+                "destination_topic",
+                "message_key",
+                "payload",
+                "status",
+                "attempts",
+                "created_at",
+                "published_at");
     }
 }

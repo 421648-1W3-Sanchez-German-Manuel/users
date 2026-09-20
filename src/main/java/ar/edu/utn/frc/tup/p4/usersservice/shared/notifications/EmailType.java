@@ -5,35 +5,38 @@ package ar.edu.utn.frc.tup.p4.usersservice.shared.notifications;
  */
 public enum EmailType {
 
-    TWO_FACTOR_CODE("code-2fa.html", "email.2fa.subject", "EMAIL_2FA"),
+    TWO_FACTOR_CODE(
+            "code-2fa.html",
+            "email.2fa.subject",
+            "TWO-FACTOR-EMAIL-PREPARED"),
     ACCOUNT_ACTIVATION(
             "account-activation.html",
             "email.activation.subject",
-            "EMAIL_ACTIVACION_CUENTA"),
+            "ACCOUNT-ACTIVATION-EMAIL-PREPARED"),
     RESET_PASSWORD(
             "reset-password.html",
             "email.reset.subject",
-            "EMAIL_RESET_PASSWORD"),
+            "PASSWORD-RESET-EMAIL-PREPARED"),
     REQUEST_PENDING(
             "whitelist-request-pending.html",
             "email.request.subject",
-            "EMAIL_SOLICITUD_PENDIENTE"),
+            "REQUEST-PENDING-EMAIL-PREPARED"),
     WHITELISTING_RESOLVED(
             "whitelist-request-resolved.html",
             "email.whitelisting.subject",
-            "EMAIL_HABILITACION_RESUELTA"),
+            "ENABLING-RESOLVED-EMAIL-PREPARED"),
     BREAKGLASS_ALERT(
             "breakglass-alert.html",
             "email.breakglass.subject",
-            "EMAIL_ALERTA_BREAKGLASS"),
+            "BREAKGLASS-ALERT-EMAIL-PREPARED"),
     WHITELIST_SUBMISSION(
             "whitelist-submission.html",
             "email.wl.request.subject",
-            "EMAIL_WHITELIST_SOLICITUD"),
+            "WHITELIST-SUBMISSION-EMAIL-PREPARED"),
     WHITELIST_DECISION(
             "whitelist-decision.html",
             "email.wl.resolved.subject",
-            "EMAIL_WHITELIST_RESUELTA");
+            "WHITELIST-DECISION-EMAIL-PREPARED");
 
     private final String template;
     private final String subjectKey;

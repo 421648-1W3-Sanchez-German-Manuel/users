@@ -25,6 +25,6 @@ public class WebConfig implements WebMvcConfigurer {
     public void addInterceptors(InterceptorRegistry registry) {
         registry.addInterceptor(gates)
                 .addPathPatterns(privatePath + "/**")
-                .excludePathPatterns(publicPath + "/**");   // publicas: sin gates
+                .excludePathPatterns(publicPath + "/**");   // Public routes have no gates.
     }
 }

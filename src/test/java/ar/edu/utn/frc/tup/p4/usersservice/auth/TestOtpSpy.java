@@ -10,21 +10,22 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Primary;
 
 import java.util.Map;
+import java.util.UUID;
 
 /**
- * Captura el code del segundo factor desde el MAIL, igual que TestResetSpy.
+ * Captures the second-factor code from the EMAIL, just like TestResetSpy.
  *
- * <p>Antes decoraba a SecondFactorProvider y lo leia del valor de retorno de
- * generarDesafio. Eso obligaba a que la interfaz de produccion devolviera el
- * OTP en claro solo para que un test pudiera verlo: cualquier caller futuro, o
- * un log.debug sobre ese retorno, filtraba el segundo factor. El code ya viaja
- * en las variables del mail, que es de donde hay que sacarlo.
+ * <p>It previously decorated SecondFactorProvider and read the return value of
+ * generateChallenge. That forced the production interface to return the
+ * plaintext OTP solely so a test could see it: any future caller or a log.debug
+ * of that return value would leak the second factor. The code already travels
+ * in the email variables, which is where it should be captured.
  *
- * <p>Captura SOLO {@code EmailType.TWO_FACTOR_CODE}.
+ * <p>Captures ONLY {@code EmailType.TWO_FACTOR_CODE}.
  */
 public class TestOtpSpy extends NotificationEventPublisher {
 
-    private volatile String ultimo;
+    private volatile String lastCode;
 
     public TestOtpSpy(EmailTemplateService templates, AccountEventPublisher outbox,
                       KafkaTopicsProperties topics) {
@@ -32,21 +33,22 @@ public class TestOtpSpy extends NotificationEventPublisher {
     }
 
     @Override
-    public void enviar(EmailType tipo, String to, Map<String, Object> vars) {
-        if (tipo == EmailType.TWO_FACTOR_CODE) {
-            this.ultimo = (String) vars.get("code");
+    public void send(EmailType type, UUID userId, String to, Map<String, Object> variables) {
+        if (type == EmailType.TWO_FACTOR_CODE) {
+            this.lastCode = (String) variables.get("code");
         }
-        super.enviar(tipo, to, vars);
+        super.send(type, userId, to, variables);
     }
 
-    /** El ultimo code de 2FA que salio por mail, o null si todavia no salio ninguno. */
-    public String ultimoCodigo() { return ultimo; }
+    /** The last 2FA code sent by email, or null if none has been sent yet. */
+    public String lastCode() { return lastCode; }
 
     /**
-     * UN solo registro: TestOtpSpy es subtipo de NotificationEventPublisher y
-     * se registra @Primary, asi que EmailOtpProvider recibe ESTE en lugar del
-     * publisher real. Si ademas se registrara con @Component habria dos
-     * instancias y el spy capturaria codes de una que nadie usa.
+     * ONE registration: TestOtpSpy is a subtype of NotificationEventPublisher
+     * and registers as @Primary, so EmailOtpProvider receives THIS instance
+     * instead of the real publisher. Registering it with @Component as well
+     * would create two instances, and the spy would capture codes from the one
+     * nobody uses.
      */
     @TestConfiguration
     public static class Config {

@@ -17,15 +17,15 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-/** DEC-02 · el logout borra session:{userId}: corta el access al instante. */
+/** DEC-02: logout deletes session:{userId}, cutting off access immediately. */
 class LogoutIT extends AbstractIntegrationTest {
 
     /**
-     * MySQL y Redis son singletons compartidos SIN cleanup entre clases
-     * (AbstractIntegrationTest). Con direcciones fijas, cualquier otro lote
-     * que tome una de estas, o una corrida repetida en la misma JVM, produce
-     * un 409 de clave duplicada en el INSERT del fixture y se lee como falla
-     * del codigo bajo prueba.
+     * MySQL and Redis are shared singletons with NO cleanup between classes
+     * (AbstractIntegrationTest). With fixed addresses, any other batch that
+     * uses one of them, or a repeated run in the same JVM, causes a duplicate
+     * key 409 in the fixture INSERT that looks like a failure in the code under
+     * test.
      */
     private static final String SUF = "-" + UUID.randomUUID() + "@utn.edu.ar";
 
@@ -35,20 +35,20 @@ class LogoutIT extends AbstractIntegrationTest {
     @Autowired PasswordEncoder encoder;
 
     @Test
-    void el_logout_borra_la_key_de_sesion() {
-        User u = User.create("A", "A", "out" + SUF,
-                encoder.encode("passwordvalida1"), Role.STUDENT, "v1");
-        u.forceStatusForTest(AccountStatus.ACTIVE);
-        UUID id = repo.saveAndFlush(u).getId();
+    void logoutDeletesTheSessionKey() {
+        User user = User.create("A", "A", "out" + SUF,
+                encoder.encode("validpassword1"), Role.STUDENT, "v1");
+        user.forceStatusForTest(AccountStatus.ACTIVE);
+        UUID id = repo.saveAndFlush(user).getId();
 
-        var t = auth.emitirParDeTokens(id);
-        assertThat(store.sidDe(id)).isPresent();
+        var tokens = auth.issueTokenPair(id);
+        assertThat(store.findSessionId(id)).isPresent();
 
-        auth.logout(id, t.refreshToken());
+        auth.logout(id, tokens.refreshToken());
 
-        // Sin la key, el Gateway responde 401 "sesion cerrada" (DEC-01),
+        // Without the key, the Gateway returns 401 "session closed" (DEC-01),
         // without waiting the ~10 min of exp.
-        assertThat(store.sidDe(id)).isEmpty();
-        assertThatThrownBy(() -> auth.refrescar(t.refreshToken())).isInstanceOf(ApiException.class);
+        assertThat(store.findSessionId(id)).isEmpty();
+        assertThatThrownBy(() -> auth.refresh(tokens.refreshToken())).isInstanceOf(ApiException.class);
     }
 }

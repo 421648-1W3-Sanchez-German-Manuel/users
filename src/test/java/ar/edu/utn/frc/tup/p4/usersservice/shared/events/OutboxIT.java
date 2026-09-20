@@ -1,6 +1,7 @@
 package ar.edu.utn.frc.tup.p4.usersservice.shared.events;
 
 import ar.edu.utn.frc.tup.p4.usersservice.AbstractIntegrationTest;
+import ar.edu.utn.frc.tup.p4.usersservice.shared.events.entities.OutboxStatus;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.transaction.annotation.Transactional;
@@ -22,42 +23,60 @@ class OutboxIT extends AbstractIntegrationTest {
 
     @Test
     @Transactional
-    void publicar_escribe_una_fila_pendiente_no_publica_a_kafka() {
-        // Topico unico por corrida, y se filtra por el. La base de datos es UNA
-        // para todas las clases de test y nadie limpia entre ellas: en cuanto
-        // otro flujo publica un evento -- el mail de 2FA del login, el de
-        // activacion del alta -- el outbox deja de tener una sola fila y este
-        // test falla por algo que no tiene nada que ver con lo que prueba.
+    void publishing_writes_a_pending_row_without_publishing_to_kafka() {
+        // Use a unique topic for each run and filter by it. There is ONE database
+        // for all test classes and nobody cleans it between them. As soon as
+        // another flow publishes an event, such as a login 2FA email or a
+        // registration activation email, the outbox no longer has a single row
+        // and this test would fail for an unrelated reason.
         //
-        // Es el mismo patron que ya usa el segundo test de esta clase, que mide
-        // un delta contra `outbox.count()` en vez de afirmar sobre la tabla
-        // entera.
-        String topico = "topico.test." + UUID.randomUUID();
-        publisher.publicar(topico, "EVENTO_TEST", new Payload("valor"));
+        // This is the same pattern used by the second test in this class, which
+        // measures a delta against `outbox.count()` instead of asserting on the
+        // entire table.
+        String topic = "topico.test." + UUID.randomUUID();
+        UUID aggregateId = UUID.randomUUID();
+        publisher.publish(
+                topic,
+                aggregateId.toString(),
+                "TEST-EVENT",
+                1,
+                "test-aggregate",
+                aggregateId,
+                new Payload("value"));
 
-        var pendientes = outbox.findAll().stream()
-                .filter(event -> event.getPublishedAt() == null)
-                .filter(event -> topico.equals(event.getTopic()))
+        var pendingEvents = outbox.findAll().stream()
+                .filter(event -> event.getStatus() == OutboxStatus.PENDING)
+                .filter(event -> topic.equals(event.getDestinationTopic()))
                 .toList();
 
-        assertThat(pendientes).hasSize(1);
-        assertThat(pendientes.getFirst().getTopic()).isEqualTo(topico);
-        assertThat(pendientes.getFirst().getPayload()).contains("\"eventType\":\"EVENTO_TEST\"");
-        assertThat(pendientes.getFirst().getPayload()).contains("\"producer\":\"tema-01-users\"");
+        assertThat(pendingEvents).hasSize(1);
+        assertThat(pendingEvents.getFirst().getDestinationTopic()).isEqualTo(topic);
+        assertThat(pendingEvents.getFirst().getMessageKey()).isEqualTo(aggregateId.toString());
+        assertThat(pendingEvents.getFirst().getPayload()).contains("\"eventType\":\"TEST-EVENT\"");
+        assertThat(pendingEvents.getFirst().getPayload()).contains("\"eventVersion\":1");
+        assertThat(pendingEvents.getFirst().getPayload()).contains("\"producer\":\"tema-01-users\"");
     }
 
     @Test
-    void si_la_transaccion_hace_rollback_el_evento_no_existe() {
-        long antes = outbox.count();
+    void a_rolled_back_transaction_does_not_leave_an_event() {
+        long before = outbox.count();
 
         assertThatThrownBy(() -> tx.executeWithoutResult(status -> {
-            publisher.publicar("topico.test.v1", "EVENTO_TEST", new Payload("x"));
+            UUID aggregateId = UUID.randomUUID();
+            publisher.publish(
+                    "test-events",
+                    aggregateId.toString(),
+                    "TEST-EVENT",
+                    1,
+                    "test-aggregate",
+                    aggregateId,
+                    new Payload("x"));
             throw new IllegalStateException("intentional rollback");
         })).isInstanceOf(IllegalStateException.class);
 
-        assertThat(outbox.count()).isEqualTo(antes);
+        assertThat(outbox.count()).isEqualTo(before);
     }
 
-    record Payload(String campo) {
+    record Payload(String value) {
     }
 }

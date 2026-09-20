@@ -7,14 +7,21 @@ import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Map;
+import java.util.Objects;
+import java.util.UUID;
 
 /**
- * DEC-34 - renders complete emails and writes their delivery events to the outbox.
+ * Renders complete emails and writes their events to the transactional outbox.
  */
 @Component
 public class NotificationEventPublisher {
 
-    public record PayloadEmail(String to, String asunto, String html) {
+    public record EmailPayload(String to, String subject, String html) {
+        public EmailPayload {
+            Objects.requireNonNull(to, "to is required");
+            Objects.requireNonNull(subject, "subject is required");
+            Objects.requireNonNull(html, "html is required");
+        }
     }
 
     private final EmailTemplateService templates;
@@ -31,11 +38,15 @@ public class NotificationEventPublisher {
     }
 
     @Transactional(propagation = Propagation.MANDATORY)
-    public void enviar(EmailType tipo, String to, Map<String, Object> vars) {
-        var mail = templates.render(tipo, vars);
-        outbox.publicar(
-                topics.notificaciones(),
-                tipo.eventType(),
-                new PayloadEmail(to, mail.asunto(), mail.html()));
+    public void send(EmailType type, UUID userId, String to, Map<String, Object> variables) {
+        var renderedEmail = templates.render(type, variables);
+        outbox.publish(
+                topics.notificationEvents(),
+                userId.toString(),
+                type.eventType(),
+                1,
+                "user",
+                userId,
+                new EmailPayload(to, renderedEmail.subject(), renderedEmail.html()));
     }
 }

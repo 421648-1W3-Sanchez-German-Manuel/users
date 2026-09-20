@@ -25,116 +25,115 @@ import java.util.UUID;
 @Service
 public class PasswordService {
 
-    private static final String RESPUESTA_CONSTANTE = "Si el email existe, te enviamos las instrucciones.";
+    private static final String CONSTANT_RESPONSE = "Si el email existe, te enviamos las instrucciones.";
     private static final SecureRandom RANDOM = new SecureRandom();
-    /** DEC-16. Corto a proposito: un reset vigente es una cuenta tomable. */
-    private static final Duration TTL_RESET = Duration.ofMinutes(15);
+    /** DEC-16. Deliberately short: an active reset token can be used to take over an account. */
+    private static final Duration RESET_TTL = Duration.ofMinutes(15);
 
-    private final CredentialService credenciales;
-    private final EphemeralTokenService efimeros;
+    private final CredentialService credentials;
+    private final EphemeralTokenService ephemeralTokens;
     private final TokenStore store;
     private final NotificationEventPublisher mails;
     private final RateLimitProperties rate;
-    private final String urlFront;
+    private final String frontendUrl;
 
-    public PasswordService(CredentialService credenciales, EphemeralTokenService efimeros,
+    public PasswordService(CredentialService credentials, EphemeralTokenService ephemeralTokens,
                            TokenStore store, NotificationEventPublisher mails,
                            RateLimitProperties rate,
-                           @Value("${users.front-url:https://app.tpi.utn.frc}") String urlFront) {
-        this.credenciales = credenciales; this.efimeros = efimeros;
+                           @Value("${users.front-url:https://app.tpi.utn.frc}") String frontendUrl) {
+        this.credentials = credentials; this.ephemeralTokens = ephemeralTokens;
         this.store = store; this.mails = mails;
-        this.rate = rate; this.urlFront = urlFront;
+        this.rate = rate; this.frontendUrl = frontendUrl;
     }
 
     @Transactional
-    public void cambiar(UUID userId, String actual, String nueva) {
-        if (!credenciales.verifyPasswordOf(userId, actual)) throw ApiException.invalidCredentials();
-        credenciales.updatePassword(userId, nueva);
-        store.borrarSesion(userId);     // cerrar sesiones viejas
+    public void change(UUID userId, String currentPassword, String newPassword) {
+        if (!credentials.verifyPasswordOf(userId, currentPassword)) throw ApiException.invalidCredentials();
+        credentials.updatePassword(userId, newPassword);
+        store.deleteSession(userId);     // Close old sessions.
     }
 
     /**
      * DEC-16 - half 1: REQUEST. It ALWAYS returns the same, e-mail or no e-mail.
      * DEC-33: this does NOT become a 6-digit code. Guessing a reset IS taking
-     * la cuenta; activate un email no le da acceso a nadie. Distinto impacto,
-     * distinto mecanismo.
+     * an account; activating an email does not grant anyone access. Different
+     * impact, different mechanism.
      */
     @Transactional
-    public String pedirReset(String email) {
-        // El limite se cuenta ANTES de buscar la cuenta y sobre el mail que
-        // mandaron, exista o no. Al reves filtraria: solo las direcciones
-        // registradas llegarian al tope. Cuenta intentos y no fallos, porque
-        // aca no hay acierto que pueda limpiar el presupuesto.
+    public String requestReset(String email) {
+        // Count against the limit BEFORE looking up the account and use the email
+        // provided, whether it exists or not. Reversing the order would leak data:
+        // only registered addresses would reach the limit. Count attempts rather
+        // than failures because there is no successful outcome that can clear the budget.
         //
-        // Sin esto, el endpoint es publico y sin techo: mail ilimitado a
-        // cualquier direccion y outbox_events creciendo sin control.
+        // Without this, the public endpoint is unbounded: unlimited email to any
+        // address and uncontrolled growth of outbox_events.
         String key = email.toLowerCase(Locale.ROOT);
-        if (store.incrementarUso("reset", key, rate.resetVentana()) > rate.resetMaxPedidos()) {
-            throw ApiException.tooManyAttempts(rate.resetVentana());
+        if (store.incrementUsage("reset", key, rate.resetWindow()) > rate.resetMaxRequests()) {
+            throw ApiException.tooManyAttempts(rate.resetWindow());
         }
 
-        var datos = credenciales.findForPasswordReset(email);
-        if (datos != null) {
-            // Mismo esquema que el enlace de activacion (RegistrationService):
-            //   reset:{sha256(token)}   -> userId   (por donde entra el enlace)
-            //   reset:email:{email}     -> sha256   (indice, para invalidar al reenviar)
-            // Sin el indice, cada pedido dejaba vivo tambien el enlace anterior
-            // y se acumulaban N enlaces validos a la vez.
-            efimeros.consumir(claveIndice(datos.email()))
-                    .ifPresent(hashViejo -> efimeros.consumir(claveReset(hashViejo)));
+        var resetData = credentials.findForPasswordReset(email);
+        if (resetData != null) {
+            // Same structure as the activation link (RegistrationService):
+            //   reset:{sha256(token)}   -> userId   (entry point for the link)
+            //   reset:email:{email}     -> sha256   (index used to invalidate on resend)
+            // Without the index, each request would leave the previous link active,
+            // accumulating N valid links at the same time.
+            ephemeralTokens.consume(indexKey(resetData.email()))
+                    .ifPresent(previousHash -> ephemeralTokens.consume(resetKey(previousHash)));
 
             byte[] bytes = new byte[32];
             RANDOM.nextBytes(bytes);
             String token = Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
-            String hash = hashear(token);
+            String hash = hash(token);
 
-            efimeros.guardar(claveReset(hash), datos.userId().toString(), TTL_RESET);
-            efimeros.guardar(claveIndice(datos.email()), hash, TTL_RESET);
-            mails.enviar(EmailType.RESET_PASSWORD, datos.email(), Map.of(
-                    "firstNames", datos.firstNames(),
-                    "enlace", urlFront + "/reset?token=" + token));
+            ephemeralTokens.save(resetKey(hash), resetData.userId().toString(), RESET_TTL);
+            ephemeralTokens.save(indexKey(resetData.email()), hash, RESET_TTL);
+            mails.send(EmailType.RESET_PASSWORD, resetData.userId(), resetData.email(), Map.of(
+                    "firstNames", resetData.firstNames(),
+                    "enlace", frontendUrl + "/reset?token=" + token));
         }
-        return RESPUESTA_CONSTANTE;
+        return CONSTANT_RESPONSE;
     }
 
     /** DEC-16 - half 2: CONFIRM. Its own path, its own body. */
     @Transactional
-    public void confirmarReset(String token, String nueva) {
-        // La politica se valida ANTES de quemar el token. consumir() borra la
-        // clave de Redis, y Redis esta fuera del rollback de @Transactional:
-        // con el orden anterior, escribir una password que no pasa la politica
-        // devolvia 400 Y dejaba el enlace muerto. Habia que pedir otro mail
-        // por haberse equivocado al tipear.
-        PasswordPolicy.validate(nueva);
+    public void confirmReset(String token, String newPassword) {
+        // Validate the policy BEFORE consuming the token. consume() deletes the
+        // Redis key, and Redis is outside the @Transactional rollback: with the
+        // previous order, entering a password that failed the policy returned 400
+        // AND invalidated the link. A typing mistake forced another email request.
+        PasswordPolicy.validate(newPassword);
 
-        UUID userId = efimeros.consumir(claveReset(hashear(token)))   // un solo uso, atomico
+        UUID userId = ephemeralTokens.consume(resetKey(hash(token)))   // Single-use and atomic.
                 .map(UUID::fromString)
                 .orElseThrow(ApiException::invalidCode);
 
-        credenciales.updatePassword(userId, nueva);
-        store.borrarSesion(userId);
+        credentials.updatePassword(userId, newPassword);
+        store.deleteSession(userId);
     }
 
-    private String claveReset(String hash) { return "reset:" + hash; }
+    private String resetKey(String hash) { return "reset:" + hash; }
 
-    private String claveIndice(String email) { return "reset:email:" + email; }
+    private String indexKey(String email) { return "reset:email:" + email; }
 
     /**
-     * El token se guarda HASHEADO: quien pueda leer Redis no tiene que poder
-     * tomar cuentas ajenas. Un dump, una replica, un backup o un MONITOR
-     * entregaban un enlace de reset funcional por cada pedido vigente.
+     * The token is stored HASHED: access to Redis must not enable account takeover.
+     * A dump, replica, backup, or MONITOR command would otherwise expose a working
+     * reset link for every active request.
      *
-     * SHA-256 pelado alcanza, por el mismo motivo que en RegistrationService:
-     * el token ya son 256 bits aleatorios, no hay diccionario que atacar y no
-     * hace falta el costo de BCrypt en el camino caliente.
+     * Plain SHA-256 is sufficient for the same reason as in RegistrationService:
+     * the token already contains 256 random bits, so there is no dictionary to
+     * attack and no need to incur BCrypt's cost on the hot path.
      */
-    private String hashear(String token) {
+    private String hash(String token) {
         try {
             byte[] digest = MessageDigest.getInstance("SHA-256")
                     .digest(token.getBytes(StandardCharsets.UTF_8));
             return Base64.getUrlEncoder().withoutPadding().encodeToString(digest);
         } catch (NoSuchAlgorithmException e) {
-            throw new IllegalStateException("SHA-256 no disponible", e);
+            throw new IllegalStateException("SHA-256 is not available", e);
         }
     }
 }

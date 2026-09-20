@@ -20,29 +20,33 @@ class ProfileIT extends AbstractIntegrationTest {
     @Autowired UserRepository repo;
 
     @Test
-    void el_perfil_NO_expone_email_legajo_ni_estado() {
-        User u = User.create("Ana", "Perez", "perf-" + java.util.UUID.randomUUID() + "@utn.edu.ar", "$2a$12$h", Role.STUDENT, "v1");
+    void profile_does_NOT_expose_email_legajo_or_status() {
+        User u = User.create("Ana", "Perez", "profile-" + java.util.UUID.randomUUID() + "@utn.edu.ar", "$2a$12$h", Role.STUDENT, "v1");
         u.setLegajo("76543");
         u.forceStatusForTest(AccountStatus.ACTIVE);
-        u.completeOnboarding("anaperez", "avatars/a.png", true);
+        u.completeOnboarding(true);
+        u.clearFirstLogin();
+        u.mirrorGithubUsername("anaperez");
         repo.saveAndFlush(u);
 
-        var perfil = users.perfil(u.getId());
+        var profile = users.profile(u.getId());
 
-        assertThat(perfil.firstNames()).isEqualTo("Ana");
-        assertThat(perfil.githubUsername()).isEqualTo("anaperez");
-        assertThat(perfil.toString())
-                .doesNotContain("perf@utn.edu.ar")
+        assertThat(profile.firstNames()).isEqualTo("Ana");
+        assertThat(profile.githubUsername()).isEqualTo("anaperez");
+        assertThat(profile.toString())
+                .doesNotContain("profile@utn.edu.ar")
                 .doesNotContain("76543")
                 .doesNotContain("ACTIVE");
     }
 
     @Test
-    void solo_el_handle_de_github_nunca_una_URL() {
+    void github_contains_only_the_handle_and_never_a_URL() {
         User u = User.create("B", "Q", "gh-" + UUID.randomUUID() + "@utn.edu.ar", "$2a$12$h", Role.STUDENT, "v1");
         u.forceStatusForTest(AccountStatus.ACTIVE);
-        u.completeOnboarding("bq", null, true);
+        u.completeOnboarding(true);
+        u.clearFirstLogin();
+        u.mirrorGithubUsername("bq");
         repo.saveAndFlush(u);
-        assertThat(users.perfil(u.getId()).githubUsername()).doesNotContain("http");
+        assertThat(users.profile(u.getId()).githubUsername()).doesNotContain("http");
     }
 }

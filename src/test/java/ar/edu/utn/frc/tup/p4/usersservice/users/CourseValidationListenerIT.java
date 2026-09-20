@@ -18,84 +18,118 @@ class CourseValidationListenerIT extends AbstractIntegrationTest {
 
     @Autowired CourseValidationListener listener;
     @Autowired UserRepository repo;
-    @Autowired ProcessedEventRepository procesados;
+    @Autowired ProcessedEventRepository processedEvents;
 
-    private User pendienteCurso(String email) {
+    private User pendingCourse(String email) {
         User u = User.create("Ana", "P", email, "$2a$12$h", Role.STUDENT, "v1");
         u.activate();                     // -> PENDING_COURSE
         return repo.saveAndFlush(u);
     }
 
-    private String sobre(String eventId, UUID userId, String resultado) {
+    private String envelope(String eventId, UUID userId, String result) {
         return """
-               {"eventId":"%s","eventType":"VALIDACION_CURSO_RESUELTA",
+               {"eventId":"%s","eventType":"COURSE-VALIDATION-RESOLVED","eventVersion":1,
                 "timestamp":"2026-09-07T12:00:00Z","producer":"tema-02-cursos",
-                "payload":{"userId":"%s","resultado":"%s","cursoId":"c-1"}}
-               """.formatted(eventId, userId, resultado);
+                "payload":{"userId":"%s","result":"%s","courseId":"c-1"}}
+               """.formatted(eventId, userId, result);
     }
 
     @Test
-    void el_evento_pasa_la_cuenta_a_ACTIVA() {
-        User u = pendienteCurso("cv1@utn.edu.ar");
-        listener.consumir(sobre(UUID.randomUUID().toString(), u.getId(), "VALIDADO_PADRON"));
+    void the_event_moves_the_account_to_ACTIVE() {
+        User u = pendingCourse("cv1@utn.edu.ar");
+        listener.consume(envelope(UUID.randomUUID().toString(), u.getId(), "VALIDADO_PADRON"));
 
         assertThat(repo.findById(u.getId()))
                 .get().extracting(User::getAccountStatus).isEqualTo(AccountStatus.ACTIVE);
     }
 
     @Test
-    void reprocesar_el_MISMO_eventId_es_un_no_op_verificable() {
-        // DEC-13 · criterio de DoD #6.
-        User u = pendienteCurso("cv2@utn.edu.ar");
+    void reprocessing_the_SAME_eventId_is_a_verifiable_no_op() {
+        // DEC-13, DoD criterion #6.
+        User u = pendingCourse("cv2@utn.edu.ar");
         String id = UUID.randomUUID().toString();
 
-        listener.consumir(sobre(id, u.getId(), "VALIDADO_PADRON"));
-        long procesadosAntes = procesados.count();
-        listener.consumir(sobre(id, u.getId(), "VALIDADO_PADRON"));   // otra vez
+        listener.consume(envelope(id, u.getId(), "VALIDADO_PADRON"));
+        long processedBefore = processedEvents.count();
+        listener.consume(envelope(id, u.getId(), "VALIDADO_PADRON"));   // again
 
-        assertThat(procesados.count()).isEqualTo(procesadosAntes);
+        assertThat(processedEvents.count()).isEqualTo(processedBefore);
         assertThat(repo.findById(u.getId()))
                 .get().extracting(User::getAccountStatus).isEqualTo(AccountStatus.ACTIVE);
     }
 
     @Test
-    void un_evento_sobre_una_cuenta_YA_ACTIVA_no_falla() {
-        User u = pendienteCurso("cv3@utn.edu.ar");
+    void an_event_for_an_ALREADY_ACTIVE_account_does_not_fail() {
+        User u = pendingCourse("cv3@utn.edu.ar");
         u.activateAfterCourseValidation();
         repo.saveAndFlush(u);
 
-        listener.consumir(sobre(UUID.randomUUID().toString(), u.getId(), "VALIDADO_EXCEPCION"));
+        listener.consume(envelope(UUID.randomUUID().toString(), u.getId(), "VALIDADO_EXCEPCION"));
 
         assertThat(repo.findById(u.getId()))
                 .get().extracting(User::getAccountStatus).isEqualTo(AccountStatus.ACTIVE);
     }
 
     @Test
-    void campos_desconocidos_en_el_payload_NO_rompen() {
-        // DEC-34: if Cursos sends three extra fields, we do not break.
-        User u = pendienteCurso("cv4@utn.edu.ar");
-        String conExtras = """
-              {"eventId":"%s","eventType":"VALIDACION_CURSO_RESUELTA",
+    void unknown_payload_fields_do_NOT_break_processing() {
+        // DEC-34: if Courses sends three extra fields, we do not break.
+        User u = pendingCourse("cv4@utn.edu.ar");
+        String withExtraFields = """
+              {"eventId":"%s","eventType":"COURSE-VALIDATION-RESOLVED","eventVersion":1,
                "timestamp":"2026-09-07T12:00:00Z","producer":"tema-02-cursos",
                "campoNuevoDeCursos":"loquesea",
-               "payload":{"userId":"%s","resultado":"VALIDADO_PADRON","cursoId":"c-1",
+               "payload":{"userId":"%s","result":"VALIDADO_PADRON","courseId":"c-1",
                           "otroCampoNuevo":42}}
               """.formatted(UUID.randomUUID(), u.getId());
 
-        listener.consumir(conExtras);
+        listener.consume(withExtraFields);
 
         assertThat(repo.findById(u.getId()))
                 .get().extracting(User::getAccountStatus).isEqualTo(AccountStatus.ACTIVE);
     }
 
     @Test
-    void el_resultado_y_el_cursoId_NO_se_persisten() {
-        // DEC-09: Cursos owns that data. Duplicating it here would be a second
+    void result_and_courseId_are_NOT_persisted() {
+        // DEC-09: Courses owns that data. Duplicating it here would be a second
         // source of truth, which is exactly what the v5 revision fixed.
-        User u = pendienteCurso("cv5@utn.edu.ar");
-        listener.consumir(sobre(UUID.randomUUID().toString(), u.getId(), "VALIDADO_EXCEPCION"));
+        User u = pendingCourse("cv5@utn.edu.ar");
+        listener.consume(envelope(UUID.randomUUID().toString(), u.getId(), "VALIDADO_EXCEPCION"));
 
         assertThat(repo.findById(u.getId()).orElseThrow().toString())
                 .doesNotContain("VALIDADO_EXCEPCION").doesNotContain("c-1");
+    }
+
+    @Test
+    void anUnknownEventTypeIsIgnoredSafely() {
+        User user = pendingCourse("cv6@utn.edu.ar");
+        long processedBefore = processedEvents.count();
+        String unknownEvent = """
+                {"eventId":"%s","eventType":"COURSE-ARCHIVED","eventVersion":1,
+                 "timestamp":"2026-09-07T12:00:00Z","producer":"tema-02-cursos",
+                 "payload":{"userId":"%s","result":"ARCHIVED","courseId":"c-1"}}
+                """.formatted(UUID.randomUUID(), user.getId());
+
+        listener.consume(unknownEvent);
+
+        assertThat(repo.findById(user.getId()))
+                .get().extracting(User::getAccountStatus).isEqualTo(AccountStatus.PENDING_COURSE);
+        assertThat(processedEvents.count()).isEqualTo(processedBefore);
+    }
+
+    @Test
+    void anUnknownEventVersionIsIgnoredSafely() {
+        User user = pendingCourse("cv7@utn.edu.ar");
+        long processedBefore = processedEvents.count();
+        String unknownVersion = """
+                {"eventId":"%s","eventType":"COURSE-VALIDATION-RESOLVED","eventVersion":2,
+                 "timestamp":"2026-09-07T12:00:00Z","producer":"tema-02-cursos",
+                 "payload":{"userId":"%s","result":"VALIDATED","courseId":"c-1"}}
+                """.formatted(UUID.randomUUID(), user.getId());
+
+        listener.consume(unknownVersion);
+
+        assertThat(repo.findById(user.getId()))
+                .get().extracting(User::getAccountStatus).isEqualTo(AccountStatus.PENDING_COURSE);
+        assertThat(processedEvents.count()).isEqualTo(processedBefore);
     }
 }

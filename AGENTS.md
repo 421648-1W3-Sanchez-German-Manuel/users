@@ -82,6 +82,13 @@ token, it just takes someone reading logs.
 data change, and dispatched by a poller. Publishing to the broker from inside
 the transaction means a broker outage takes every write down with it.
 
+**9 · Everything is written in English, except anything shown to the user.**
+Code, identifiers, comments, commit messages, PR/issue text and docs are all in
+English. The only exception is user-facing text — UI copy, user-facing error or
+validation messages, emails — which stays in the product's target language. When
+in doubt whether a string is user-facing, treat it as internal and write it in
+English.
+
 ## Kafka is a boundary, not ours
 
 The broker is shared infrastructure. Topics and payload schemas are a **contract
@@ -102,6 +109,23 @@ payload without telling the other side.
   happens every time and not just the first, that is a real problem.
 
 ## Documentation
+
+**The live API reference** is Swagger UI, with the stack up:
+
+```
+http://localhost:3000/api/users/public/docs          # the screen
+http://localhost:3000/api/users/public/v3/api-docs   # the raw OpenAPI spec
+```
+
+It hangs off the **public** prefix and that is not cosmetic. This service
+publishes no ports, nginx only proxies `/api/` to the gateway, and the gateway
+only lets `/api/*/public/**` through without a JWT. Move those paths anywhere
+else and the page stops being reachable — the symptom is a 401, or the front's
+`index.html`, never "you moved the path". `OpenApiIT` pins it.
+
+To try a private endpoint from the page, hit **Authorize** and paste the access
+token from `/auth/2fa/verify`. The gateway is what validates it; this service
+only ever sees the `X-*` headers.
 
 | Document | Contents |
 |---|---|

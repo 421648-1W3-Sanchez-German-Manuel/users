@@ -40,7 +40,7 @@ public class GlobalExceptionHandler {
     }
 
     @ExceptionHandler(InvalidTransitionException.class)
-    ProblemDetail transicion(InvalidTransitionException ex, HttpServletRequest req) {
+    ProblemDetail transition(InvalidTransitionException ex, HttpServletRequest req) {
         return base(409, ErrorTypes.INVALID_TRANSITION, "Invalid transition", ex.getMessage(), req);
     }
 
@@ -61,21 +61,21 @@ public class GlobalExceptionHandler {
      * in a frontend URL would log people out.
      */
     @ExceptionHandler({NoHandlerFoundException.class, NoResourceFoundException.class})
-    ProblemDetail noExiste(Exception ex, HttpServletRequest req) {
+    ProblemDetail notFound(Exception ex, HttpServletRequest req) {
         return base(404, ErrorTypes.ROUTE_NOT_FOUND, "Route not found",
                 "The requested route does not exist.", req);
     }
 
     /** The route exists but not with that verb. To a client it is the same family. */
     @ExceptionHandler(HttpRequestMethodNotSupportedException.class)
-    ProblemDetail metodo(HttpRequestMethodNotSupportedException ex, HttpServletRequest req) {
-        return base(405, ErrorTypes.ROUTE_NOT_FOUND, "Metodo no soportado",
+    ProblemDetail methodNotSupported(HttpRequestMethodNotSupportedException ex, HttpServletRequest req) {
+        return base(405, ErrorTypes.ROUTE_NOT_FOUND, "Method not supported",
                 "Method " + ex.getMethod() + " is not supported on that route.", req);
     }
 
     /** An {id} that is not a UUID, an enum value that does not exist. */
     @ExceptionHandler(MethodArgumentTypeMismatchException.class)
-    ProblemDetail tipo(MethodArgumentTypeMismatchException ex, HttpServletRequest req) {
+    ProblemDetail typeMismatch(MethodArgumentTypeMismatchException ex, HttpServletRequest req) {
         return base(400, ErrorTypes.VALIDATION, "Invalid request",
                 "Parameter '" + ex.getName() + "' does not have the expected format.", req);
     }
@@ -85,16 +85,16 @@ public class GlobalExceptionHandler {
      * classes and fields, and it is unreadable for whoever has to fix it.
      */
     @ExceptionHandler(HttpMessageNotReadableException.class)
-    ProblemDetail cuerpo(HttpMessageNotReadableException ex, HttpServletRequest req) {
+    ProblemDetail unreadableBody(HttpMessageNotReadableException ex, HttpServletRequest req) {
         return base(400, ErrorTypes.VALIDATION, "Invalid request",
                 "The request body is not valid JSON.", req);
     }
 
     @ExceptionHandler(DataIntegrityViolationException.class)
-    ProblemDetail integridad(DataIntegrityViolationException ex, HttpServletRequest req) {
+    ProblemDetail integrityViolation(DataIntegrityViolationException ex, HttpServletRequest req) {
         // The database message is not exposed: it can leak index and column names.
         log.warn("Integrity violation on {}", req.getRequestURI(), ex);
-        return base(409, ErrorTypes.DUPLICATE_EMAIL, "Conflicto",
+        return base(409, ErrorTypes.DUPLICATE_EMAIL, "Conflict",
                 "The operation violates a uniqueness constraint.", req);
     }
 

@@ -37,6 +37,7 @@ public class SecurityConfig {
                         .requestMatchers(publicPath + "/**").permitAll()
                         .requestMatchers("/.well-known/**").permitAll()
                         .requestMatchers("/actuator/health/**").permitAll()
+                        .requestMatchers("/actuator/prometheus").permitAll()
                         // The dispatch to /error runs WITHOUT the GatewayIdentityFilter
                         // (OncePerRequestFilter skips the ERROR dispatch): if it
                         // required authentication, any internal error would come
@@ -85,9 +86,9 @@ public class SecurityConfig {
             response.setContentType("application/problem+json");
             response.getWriter().write(
                     "{\"type\":\"" + ErrorTypes.NOT_AUTHENTICATED + "\","
-                    + "\"title\":\"No autenticado\","
+                    + "\"title\":\"Not authenticated\","
                     + "\"status\":401,"
-                    + "\"detail\":\"El request no trae headers de identidad validados.\","
+                    + "\"detail\":\"The request does not contain validated identity headers.\","
                     + "\"instance\":\"" + request.getRequestURI() + "\"}");
         };
     }

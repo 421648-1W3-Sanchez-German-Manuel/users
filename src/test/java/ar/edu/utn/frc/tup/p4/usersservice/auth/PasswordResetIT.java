@@ -18,103 +18,103 @@ import static org.assertj.core.api.Assertions.assertThat;
 import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-/** DEC-16 - two endpoints, not one. `flujos` §06 drew them as the same POST. */
-@Import(TestResetSpy.Config.class)   // el spy del Step 4, solo para este test
+/** DEC-16 - two endpoints, not one. The flow manifest section 06 drew them as the same POST. */
+@Import(TestResetSpy.Config.class)   // Step 4's spy, only for this test
 class PasswordResetIT extends AbstractIntegrationTest {
 
     /**
-     * MySQL y Redis son singletons compartidos SIN cleanup entre clases
-     * (AbstractIntegrationTest). Con direcciones fijas, cualquier otro lote
-     * que tome una de estas, o una corrida repetida en la misma JVM, produce
-     * un 409 de clave duplicada en el INSERT del fixture y se lee como falla
-     * del codigo bajo prueba.
+     * MySQL and Redis are shared singletons with NO cleanup between classes
+     * (AbstractIntegrationTest). With fixed addresses, any other batch that
+     * uses one of them, or a repeated run in the same JVM, causes a duplicate
+     * key 409 in the fixture INSERT that looks like a failure in the code under
+     * test.
      */
     private static final String SUF = "-" + UUID.randomUUID() + "@utn.edu.ar";
 
     @Autowired PasswordService passwords;
-    @Autowired CredentialService credenciales;
+    @Autowired CredentialService credentials;
     @Autowired UserRepository repo;
     @Autowired PasswordEncoder encoder;
     @Autowired TokenStore store;
-    @Autowired TestResetSpy spy;      // captura el token, igual que TestOtpSpy
-                                      // (solo RESET_PASSWORD: ver Step 4)
+    @Autowired TestResetSpy spy;      // captures the token, like TestOtpSpy
+                                      // (RESET_PASSWORD only; see Step 4)
 
-    private User crear(String email) {
-        User u = User.create("Ana", "P", email, encoder.encode("passwordvalida1"), Role.STUDENT, "v1");
-        u.forceStatusForTest(AccountStatus.ACTIVE);
-        return repo.saveAndFlush(u);
+    private User createUser(String email) {
+        User user = User.create("Ana", "P", email, encoder.encode("validpassword1"), Role.STUDENT, "v1");
+        user.forceStatusForTest(AccountStatus.ACTIVE);
+        return repo.saveAndFlush(user);
     }
 
     @Test
-    void pedir_reset_responde_IGUAL_exista_o_no_el_email() {
-        crear("res1" + SUF);
+    void requestResetReturnsTheSameResponseWhetherTheEmailExistsOrNot() {
+        createUser("res1" + SUF);
         // Anti-enumeration: an attacker cannot discover which e-mails exist.
-        assertThat(passwords.pedirReset("res1" + SUF))
-                .isEqualTo(passwords.pedirReset("nadie" + SUF));
+        assertThat(passwords.requestReset("res1" + SUF))
+                .isEqualTo(passwords.requestReset("nobody" + SUF));
     }
 
     @Test
-    void confirmar_cambia_la_password_y_revoca_las_sesiones() {
-        User u = crear("res2" + SUF);
-        store.guardarSesion(u.getId(), "sid-viejo");
+    void confirmResetChangesThePasswordAndRevokesSessions() {
+        User user = createUser("res2" + SUF);
+        store.saveSession(user.getId(), "old-sid", java.time.Duration.ofMinutes(10));
 
-        passwords.pedirReset("res2" + SUF);
-        passwords.confirmarReset(spy.ultimoToken(), "nuevapasswordok1");
+        passwords.requestReset("res2" + SUF);
+        passwords.confirmReset(spy.lastToken(), "newvalidpassword1");
 
-        assertThat(credenciales.verifyCredentials("res2" + SUF, "nuevapasswordok1")).isNotNull();
-        assertThat(credenciales.verifyCredentials("res2" + SUF, "passwordvalida1")).isNull();
+        assertThat(credentials.verifyCredentials("res2" + SUF, "newvalidpassword1")).isNotNull();
+        assertThat(credentials.verifyCredentials("res2" + SUF, "validpassword1")).isNull();
         // A changed password has to close the old sessions.
-        assertThat(store.sidDe(u.getId())).isEmpty();
+        assertThat(store.findSessionId(user.getId())).isEmpty();
     }
 
     @Test
-    void el_token_de_reset_es_de_UN_SOLO_uso() {
-        crear("res3" + SUF);
-        passwords.pedirReset("res3" + SUF);
-        String token = spy.ultimoToken();
+    void resetTokenCanOnlyBeUsedOnce() {
+        createUser("res3" + SUF);
+        passwords.requestReset("res3" + SUF);
+        String token = spy.lastToken();
 
-        passwords.confirmarReset(token, "nuevapasswordok1");
-        assertThatThrownBy(() -> passwords.confirmarReset(token, "otrapasswordok2"))
+        passwords.confirmReset(token, "newvalidpassword1");
+        assertThatThrownBy(() -> passwords.confirmReset(token, "anothervalidpassword2"))
                 .isInstanceOf(ApiException.class);
     }
 
     @Test
-    void el_reset_respeta_la_politica_de_password() {
-        crear("res4" + SUF);
-        passwords.pedirReset("res4" + SUF);
-        assertThatThrownBy(() -> passwords.confirmarReset(spy.ultimoToken(), "corta"))
+    void resetHonorsThePasswordPolicy() {
+        createUser("res4" + SUF);
+        passwords.requestReset("res4" + SUF);
+        assertThatThrownBy(() -> passwords.confirmReset(spy.lastToken(), "short"))
                 .isInstanceOf(ApiException.class);
     }
 
     @Test
-    void el_cambio_voluntario_exige_la_password_actual() {
-        User u = crear("res5" + SUF);
-        assertThatThrownBy(() -> passwords.cambiar(u.getId(), "equivocada12", "nuevapasswordok1"))
+    void voluntaryChangeRequiresTheCurrentPassword() {
+        User user = createUser("res5" + SUF);
+        assertThatThrownBy(() -> passwords.change(user.getId(), "wrongpassword12", "newvalidpassword1"))
                 .isInstanceOf(ApiException.class);
-        passwords.cambiar(u.getId(), "passwordvalida1", "nuevapasswordok1");
-        assertThat(credenciales.verifyCredentials("res5" + SUF, "nuevapasswordok1")).isNotNull();
+        passwords.change(user.getId(), "validpassword1", "newvalidpassword1");
+        assertThat(credentials.verifyCredentials("res5" + SUF, "newvalidpassword1")).isNotNull();
     }
 
     @Test
-    void al_cuarto_PEDIDO_de_reset_sobre_el_mismo_email_responde_429() {
-        crear("res6" + SUF);
+    void fourthResetRequestForTheSameEmailReturns429() {
+        createUser("res6" + SUF);
         for (int i = 0; i < 3; i++) {
-            assertThat(passwords.pedirReset("res6" + SUF)).isNotBlank();
+            assertThat(passwords.requestReset("res6" + SUF)).isNotBlank();
         }
-        assertThatThrownBy(() -> passwords.pedirReset("res6" + SUF))
+        assertThatThrownBy(() -> passwords.requestReset("res6" + SUF))
                 .isInstanceOf(ApiException.class)
                 .extracting(e -> ((ApiException) e).getStatus().value()).isEqualTo(429);
     }
 
     @Test
-    void el_limite_de_reset_no_filtra_si_la_cuenta_existe() {
-        // Cuenta intentos sobre el mail MANDADO, exista o no. Si contara solo
-        // los que encuentran cuenta, el 429 seria un oraculo de existencia.
-        String inexistente = "fantasma" + SUF;
+    void resetLimitDoesNotRevealWhetherTheAccountExists() {
+        // Count attempts for the SUBMITTED email whether it exists or not. If
+        // only existing accounts counted, the 429 would become an existence oracle.
+        String unknownEmail = "ghost" + SUF;
         for (int i = 0; i < 3; i++) {
-            assertThat(passwords.pedirReset(inexistente)).isNotBlank();
+            assertThat(passwords.requestReset(unknownEmail)).isNotBlank();
         }
-        assertThatThrownBy(() -> passwords.pedirReset(inexistente))
+        assertThatThrownBy(() -> passwords.requestReset(unknownEmail))
                 .isInstanceOf(ApiException.class)
                 .extracting(e -> ((ApiException) e).getStatus().value()).isEqualTo(429);
     }
