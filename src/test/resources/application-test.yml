@@ -23,14 +23,11 @@ spring:
     producer:
       key-serializer: org.apache.kafka.common.serialization.StringSerializer
       value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+      properties:
+        spring.json.add.type.headers: false
     consumer:
       group-id: users-service
       auto-offset-reset: earliest
-      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
-      value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
-      properties:
-        spring.json.trusted.packages: "ar.edu.utn.frc.tup.p4.usersservice.*"
-        spring.json.fail.on.unknown.properties: false
 
 server:
   port: 0
@@ -76,10 +73,6 @@ users:
       event-type: COURSE-VALIDATION-RESOLVED
       event-version: 1
       producer: tema-02-cursos
-      payload:
-        user-id: userId
-        result: result
-        course-id: courseId
 
 logging:
   pattern:

@@ -8,12 +8,5 @@ import org.springframework.boot.context.properties.bind.Name;
 public record CourseValidationContractProperties(
         @Name("event-type") String eventType,
         @Name("event-version") int eventVersion,
-        String producer,
-        PayloadFields payload) {
-
-    public record PayloadFields(
-            @Name("user-id") String userId,
-            String result,
-            @Name("course-id") String courseId) {
-    }
+        String producer) {
 }

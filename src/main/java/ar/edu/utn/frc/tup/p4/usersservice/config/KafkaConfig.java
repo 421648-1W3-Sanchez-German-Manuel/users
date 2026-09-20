@@ -19,7 +19,7 @@ import java.util.Map;
 
 /**
  * DEC-34 - the incoming Kafka boundary. CourseValidationListener receives a
- * typed {@link EventEnvelope}{@link CourseValidationResolvedPayload} via
+ * typed {@code EventEnvelope<CourseValidationResolvedPayload>} via
  * {@link JsonDeserializer}, matching the platform Kafka contract.
  *
  * The factory is built here rather than tweaking the auto-configured one so
@@ -42,12 +42,7 @@ public class KafkaConfig {
                     ObjectMapper objectMapper) {
 
         JsonDeserializer<EventEnvelope<CourseValidationResolvedPayload>> valueDeserializer =
-                new JsonDeserializer<>(
-                        new TypeReference<EventEnvelope<CourseValidationResolvedPayload>>() {
-                        },
-                        objectMapper);
-        valueDeserializer.addTrustedPackages("ar.edu.utn.frc.tup.p4.usersservice");
-        valueDeserializer.setUseTypeHeaders(false);
+                courseValidationDeserializer(objectMapper);
 
         Map<String, Object> props = new HashMap<>();
         props.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers);
@@ -62,5 +57,17 @@ public class KafkaConfig {
                 valueDeserializer));
         factory.setAutoStartup(autoStartup);
         return factory;
+    }
+
+    static JsonDeserializer<EventEnvelope<CourseValidationResolvedPayload>>
+            courseValidationDeserializer(ObjectMapper objectMapper) {
+        JsonDeserializer<EventEnvelope<CourseValidationResolvedPayload>> deserializer =
+                new JsonDeserializer<>(
+                        new TypeReference<EventEnvelope<CourseValidationResolvedPayload>>() {
+                        },
+                        objectMapper);
+        deserializer.addTrustedPackages("ar.edu.utn.frc.tup.p4.usersservice.*");
+        deserializer.setUseTypeHeaders(false);
+        return deserializer;
     }
 }

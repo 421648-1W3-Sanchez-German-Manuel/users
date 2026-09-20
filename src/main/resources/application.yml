@@ -26,15 +26,11 @@ spring:
     producer:
       key-serializer: org.apache.kafka.common.serialization.StringSerializer
       value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+      properties:
+        spring.json.add.type.headers: false
     consumer:
       group-id: users-service
       auto-offset-reset: earliest
-      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
-      value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
-      properties:
-        spring.json.trusted.packages: "ar.edu.utn.frc.tup.p4.usersservice.*"
-        # DEC-34: if another team adds fields, we do not break
-        spring.json.fail.on.unknown.properties: false
   mvc:
     # A route that does not exist has to reach the @RestControllerAdvice as an
     # exception and come out as a 404 route-not-found in problem+json. Without
@@ -181,10 +177,6 @@ users:
       event-type:    ${COURSE_VALIDATION_EVENT_TYPE:COURSE-VALIDATION-RESOLVED}
       event-version: ${COURSE_VALIDATION_EVENT_VERSION:1}
       producer:      ${COURSE_VALIDATION_PRODUCER:tema-02-cursos}
-      payload:
-        user-id:   ${COURSE_VALIDATION_FIELD_USER_ID:userId}
-        result:    ${COURSE_VALIDATION_FIELD_RESULT:result}
-        course-id: ${COURSE_VALIDATION_FIELD_COURSE_ID:courseId}
   outbox:
     poller-enabled: ${OUTBOX_POLLER_ENABLED:true}
     polling-delay: ${OUTBOX_POLLING_DELAY:PT3S}

@@ -25,6 +25,9 @@ The Kafka Message Key is outside the JSON value and is not the `eventId`.
 
 - Producer: `StringSerializer` (key) + `JsonSerializer` (value).
 - Consumer: `StringDeserializer` (key) + `JsonDeserializer` (value).
+- Producer type headers are disabled (`spring.json.add.type.headers=false`);
+  consumers must bind the envelope from its JSON shape.
+- The consumer ignores type headers and binds the configured envelope type.
 - Trusted packages: `ar.edu.utn.frc.tup.p4.usersservice.*`.
 - Consumer group: `users-service`.
 - `auto-offset-reset: earliest`.

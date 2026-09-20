@@ -39,9 +39,7 @@ public class CourseValidationListener {
         this.contract = contract;
     }
 
-    @KafkaListener(
-            topics = "${users.kafka.topics.course-events}",
-            groupId = "${spring.kafka.consumer.group-id:users-service}")
+    @KafkaListener(topics = "${users.kafka.topics.course-events}")
     @Transactional
     public void consume(EventEnvelope<CourseValidationResolvedPayload> envelope) {
         if (!contract.eventType().equals(envelope.eventType())) {
@@ -69,6 +67,17 @@ public class CourseValidationListener {
         }
 
         CourseValidationResolvedPayload payload = envelope.payload();
+        if (isBlank(payload.userId())
+                || isBlank(payload.result())
+                || isBlank(payload.courseId())) {
+            log.error(
+                    "KAFKA_EVENT_PAYLOAD_INVALID eventId={} eventType={} eventVersion={}",
+                    envelope.eventId(),
+                    envelope.eventType(),
+                    envelope.eventVersion());
+            return;
+        }
+
         UUID userId;
         try {
             userId = UUID.fromString(payload.userId());
@@ -99,5 +108,9 @@ public class CourseValidationListener {
             mails.send(EmailType.WHITELISTING_RESOLVED, u.getId(), u.getEmail(),
                     Map.of("firstNames", u.getFirstNames()));
         });
+    }
+
+    private static boolean isBlank(String value) {
+        return value == null || value.isBlank();
     }
 }

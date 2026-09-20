@@ -114,19 +114,41 @@ class CourseValidationListenerIT extends AbstractIntegrationTest {
     }
 
     @Test
-    void anUnknownEventTypeIsIgnoredSafely() {
+    void anUnknownEventTypeIsIgnoredSafelyEvenWithDifferentPayload() throws Exception {
         User user = pendingCourse("cv6@utn.edu.ar");
         long processedBefore = processedEvents.count();
-        EventEnvelope<CourseValidationResolvedPayload> unknownEvent = new EventEnvelope<>(
-                UUID.randomUUID(),
-                "COURSE-ARCHIVED",
-                1,
-                Instant.parse("2026-09-07T12:00:00Z"),
-                "tema-02-cursos",
-                new CourseValidationResolvedPayload(
-                        user.getId().toString(), "ARCHIVED", "c-1"));
+        String json = """
+                {"eventId":"%s","eventType":"COURSE-ARCHIVED","eventVersion":1,
+                 "timestamp":"2026-09-07T12:00:00Z","producer":"tema-02-cursos",
+                 "payload":{"archivedAt":"2026-09-07T11:00:00Z"}}
+                """.formatted(UUID.randomUUID());
+        EventEnvelope<CourseValidationResolvedPayload> unknownEvent = mapper.readValue(
+                json,
+                new TypeReference<EventEnvelope<CourseValidationResolvedPayload>>() {
+                });
 
         listener.consume(unknownEvent);
+
+        assertThat(repo.findById(user.getId()))
+                .get().extracting(User::getAccountStatus).isEqualTo(AccountStatus.PENDING_COURSE);
+        assertThat(processedEvents.count()).isEqualTo(processedBefore);
+    }
+
+    @Test
+    void knownEventWithMissingRequiredPayloadFieldIsRejected() throws Exception {
+        User user = pendingCourse("cv8@utn.edu.ar");
+        long processedBefore = processedEvents.count();
+        String json = """
+                {"eventId":"%s","eventType":"COURSE-VALIDATION-RESOLVED","eventVersion":1,
+                 "timestamp":"2026-09-07T12:00:00Z","producer":"tema-02-cursos",
+                 "payload":{"userId":"%s","courseId":"c-1"}}
+                """.formatted(UUID.randomUUID(), user.getId());
+        EventEnvelope<CourseValidationResolvedPayload> invalidEvent = mapper.readValue(
+                json,
+                new TypeReference<EventEnvelope<CourseValidationResolvedPayload>>() {
+                });
+
+        listener.consume(invalidEvent);
 
         assertThat(repo.findById(user.getId()))
                 .get().extracting(User::getAccountStatus).isEqualTo(AccountStatus.PENDING_COURSE);
