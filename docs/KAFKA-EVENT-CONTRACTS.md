@@ -1,7 +1,39 @@
 # Users Service Kafka Event Contracts
 
 This document registers the Kafka contracts owned or consumed by
-`tema-01-users`. It follows `KAFKA_EVENT_STANDARD.md`.
+`tema-01-users`.
+
+For the Spanish hand-off to Notifications, see
+`KAFKA-EVENTS-PARA-NOTIFICACIONES.md`.
+
+## Common envelope
+
+Every event uses the platform envelope `EventEnvelope<T>`:
+
+| Field | Required | Description |
+| --- | --- | --- |
+| `eventId` | Yes | Unique event UUID |
+| `eventType` | Yes | What happened (uppercase words separated by hyphens) |
+| `eventVersion` | Yes | Contract version for that `eventType` |
+| `timestamp` | Yes | When it happened (ISO-8601 UTC) |
+| `producer` | Yes | Emitting microservice (`tema-01-users` when we produce) |
+| `payload` | Yes | Event-specific typed data |
+
+The Kafka Message Key is outside the JSON value and is not the `eventId`.
+
+## Wire format and connectivity
+
+- Producer: `StringSerializer` (key) + `JsonSerializer` (value).
+- Consumer: `StringDeserializer` (key) + `JsonDeserializer` (value).
+- Trusted packages: `ar.edu.utn.frc.tup.p4.usersservice.*`.
+- Consumer group: `users-service`.
+- `auto-offset-reset: earliest`.
+
+Bootstrap servers:
+
+- Local / compose mock: `${KAFKA_SERVERS:localhost:9092}` (active).
+- Platform event-bus (when the shared broker replaces the mock):
+  `${KAFKA_BOOTSTRAP:event-bus:29092}` — kept commented in `application.yml`.
 
 ## Domain: Users
 
@@ -9,8 +41,7 @@ This document registers the Kafka contracts owned or consumed by
 - Message Key: `userId`
 - Justification: all events concerning the same user must preserve their
   relative order, while different users can be distributed across partitions.
-- The Message Key is outside the JSON value.
-- Every event still has its own unique `eventId`.
+- Producer: `tema-01-users`
 
 ### STUDENT-REGISTERED
 
@@ -18,7 +49,6 @@ This document registers the Kafka contracts owned or consumed by
   course-validation stage.
 - Event Type: `STUDENT-REGISTERED`
 - Event Version: `1`
-- Producer: `tema-01-users`
 - Known consumer: Courses service
 - Payload fields:
   - `userId`: string UUID, required. Identifies the student.
@@ -50,7 +80,6 @@ Example:
   account moves to `DEACTIVATED` and its session is closed.
 - Event Type: `ACCOUNT-DEACTIVATED`
 - Event Version: `1`
-- Producer: `tema-01-users`
 - Known consumer: none yet. It is published because nobody else reads the
   `users` table: without it, a subsystem holding its own copy of a person keeps
   treating a deactivated account as valid.
@@ -86,7 +115,6 @@ Example:
 - Message Key: `userId`
 - Justification: emails prepared for the same user must preserve their relative
   order, while notifications for different users can be processed in parallel.
-- The Message Key is outside the JSON value and is not the `eventId`.
 - Producer: `tema-01-users`
 - Known consumer: Notifications service
 
@@ -136,15 +164,35 @@ Example:
 - Event Type: `COURSE-VALIDATION-RESOLVED`
 - Event Version: `1`
 - Producer: `tema-02-cursos`
+- Consumer: `CourseValidationListener` receives
+  `EventEnvelope<CourseValidationResolvedPayload>` via `JsonDeserializer`.
 - Message Key: pending definition by the Courses domain owner. This service
   does not infer or redefine it.
-- Payload fields:
+- Payload type: `CourseValidationResolvedPayload`
   - `userId`: string UUID, required. Identifies the student being validated.
   - `result`: string, required. Validation result owned by Courses.
   - `courseId`: string, required. Course identifier owned by Courses.
 
+Unknown fields on the envelope or payload are ignored (`@JsonIgnoreProperties`).
 Unknown event types and unknown versions are ignored safely. Invalid envelopes
 or invalid payloads are rejected before any business state is changed.
+
+Example:
+
+```json
+{
+  "eventId": "3c27427f-e190-4d15-bc76-a110de54b14f",
+  "eventType": "COURSE-VALIDATION-RESOLVED",
+  "eventVersion": 1,
+  "timestamp": "2026-09-13T23:35:00Z",
+  "producer": "tema-02-cursos",
+  "payload": {
+    "userId": "5d1e09d8-98e2-4ee7-b763-3cbf096a503a",
+    "result": "VALIDADO_PADRON",
+    "courseId": "c-1"
+  }
+}
+```
 
 ## Transactional Outbox
 
@@ -164,6 +212,7 @@ Business changes and their events are persisted in the same SQL transaction in
 - `created_at`: event creation time.
 - `published_at`: broker-confirmed publication time, when available.
 
-The poller publishes only `PENDING` rows. It marks a row `PUBLISHED` after the
-broker acknowledges it. A failed publication remains pending until the fifth
-failed attempt, when it becomes `FAILED` for manual review.
+The poller publishes only `PENDING` rows. It deserializes the stored JSON and
+sends it with `JsonSerializer`. It marks a row `PUBLISHED` after the broker
+acknowledges it. A failed publication remains pending until the fifth failed
+attempt, when it becomes `FAILED` for manual review.
