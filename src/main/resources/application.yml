@@ -20,12 +20,19 @@ spring:
       host: ${REDIS_HOST:localhost}
       port: ${REDIS_PORT:6379}
   kafka:
+    # Platform broker when the shared event-bus replaces the local mock:
+    # bootstrap-servers: ${KAFKA_BOOTSTRAP:event-bus:29092}
     bootstrap-servers: ${KAFKA_SERVERS:localhost:9092}
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
     consumer:
       group-id: users-service
       auto-offset-reset: earliest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
       properties:
-        spring.json.trusted.packages: "*"
+        spring.json.trusted.packages: "ar.edu.utn.frc.tup.p4.usersservice.*"
         # DEC-34: if another team adds fields, we do not break
         spring.json.fail.on.unknown.properties: false
   mvc:

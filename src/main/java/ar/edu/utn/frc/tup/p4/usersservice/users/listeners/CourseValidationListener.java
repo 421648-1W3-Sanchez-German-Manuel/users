@@ -1,15 +1,13 @@
 package ar.edu.utn.frc.tup.p4.usersservice.users.listeners;
 
 import ar.edu.utn.frc.tup.p4.usersservice.config.CourseValidationContractProperties;
-import ar.edu.utn.frc.tup.p4.usersservice.shared.events.ProcessedEventRepository;
+import ar.edu.utn.frc.tup.p4.usersservice.shared.events.CourseValidationResolvedPayload;
 import ar.edu.utn.frc.tup.p4.usersservice.shared.events.EventEnvelope;
+import ar.edu.utn.frc.tup.p4.usersservice.shared.events.ProcessedEventRepository;
 import ar.edu.utn.frc.tup.p4.usersservice.shared.events.entities.ProcessedEvent;
-import ar.edu.utn.frc.tup.p4.usersservice.shared.notifications.NotificationEventPublisher;
 import ar.edu.utn.frc.tup.p4.usersservice.shared.notifications.EmailType;
+import ar.edu.utn.frc.tup.p4.usersservice.shared.notifications.NotificationEventPublisher;
 import ar.edu.utn.frc.tup.p4.usersservice.users.repositories.UserRepository;
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.core.type.TypeReference;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -25,35 +23,27 @@ public class CourseValidationListener {
 
     private static final Logger log = LoggerFactory.getLogger(CourseValidationListener.class);
 
-    private final ObjectMapper mapper;
     private final UserRepository repo;
     private final ProcessedEventRepository processedEvents;
     private final NotificationEventPublisher mails;
     private final CourseValidationContractProperties contract;
 
-    public CourseValidationListener(ObjectMapper mapper, UserRepository repo,
-                                   ProcessedEventRepository processedEvents,
-                                   NotificationEventPublisher mails,
-                                   CourseValidationContractProperties contract) {
-        this.mapper = mapper; this.repo = repo;
-        this.processedEvents = processedEvents; this.mails = mails;
+    public CourseValidationListener(
+            UserRepository repo,
+            ProcessedEventRepository processedEvents,
+            NotificationEventPublisher mails,
+            CourseValidationContractProperties contract) {
+        this.repo = repo;
+        this.processedEvents = processedEvents;
+        this.mails = mails;
         this.contract = contract;
     }
 
-    @KafkaListener(topics = "${users.kafka.topics.course-events}")
+    @KafkaListener(
+            topics = "${users.kafka.topics.course-events}",
+            groupId = "${spring.kafka.consumer.group-id:users-service}")
     @Transactional
-    public void consume(String message) {
-        EventEnvelope<JsonNode> envelope;
-        try {
-            envelope = mapper.readValue(
-                    message,
-                    new TypeReference<EventEnvelope<JsonNode>>() {
-                    });
-        } catch (Exception exception) {
-            log.error("KAFKA_EVENT_INVALID topic=course-events", exception);
-            return;
-        }
-
+    public void consume(EventEnvelope<CourseValidationResolvedPayload> envelope) {
         if (!contract.eventType().equals(envelope.eventType())) {
             log.info(
                     "KAFKA_EVENT_UNKNOWN eventId={} eventType={}",
@@ -78,28 +68,14 @@ public class CourseValidationListener {
             return;
         }
 
-        var fields = contract.payload();
-        JsonNode payload = envelope.payload();
-        if (!payload.isObject()
-                || !payload.path(fields.userId()).isTextual()
-                || !payload.path(fields.result()).isTextual()
-                || !payload.path(fields.courseId()).isTextual()) {
-            log.error(
-                    "KAFKA_EVENT_PAYLOAD_INVALID eventId={} eventType={} eventVersion={}",
-                    envelope.eventId(),
-                    envelope.eventType(),
-                    envelope.eventVersion());
-            return;
-        }
-
+        CourseValidationResolvedPayload payload = envelope.payload();
         UUID userId;
         try {
-            userId = UUID.fromString(payload.path(fields.userId()).textValue());
+            userId = UUID.fromString(payload.userId());
         } catch (IllegalArgumentException exception) {
             log.error(
-                    "KAFKA_EVENT_PAYLOAD_INVALID eventId={} field={}",
-                    envelope.eventId(),
-                    fields.userId());
+                    "KAFKA_EVENT_PAYLOAD_INVALID eventId={} field=userId",
+                    envelope.eventId());
             return;
         }
 
