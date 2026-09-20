@@ -16,6 +16,7 @@ import ar.edu.utn.frc.tup.p4.usersservice.users.repositories.UserRepository;
 import ar.edu.utn.frc.tup.p4.usersservice.users.services.UserService;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Import;
@@ -29,10 +30,13 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
- * WARNING: this class EMPTIES the `users` table, and it is the only place in
- * the suite that does so. The rule under test is global
- * (lockActive(ADMIN).size() <= 1), so unique emails are not enough: the table
- * must contain exactly the ADMIN accounts created by this test.
+ * WARNING: this class DEACTIVATES every active ADMIN before each test, and it
+ * is the only place in the suite that does so. The rule under test is global
+ * (lockActive(ADMIN).size() <= 1), so unique emails are not enough: no ADMIN
+ * from another test may stay active while this one runs.
+ *
+ * It deactivates instead of deleting because rows are never physically removed
+ * (audit): `repo.deleteAll()` is rejected by the audit listener.
  *
  * There is ONE database, shared by every test class without cleanup between
  * them. If a class needs its rows to survive another class, it will not work:
@@ -49,6 +53,15 @@ class AdminRulesIT extends AbstractIntegrationTest {
     @Autowired TokenStore tokens;
     @Autowired OutboxRepository outbox;
     @Autowired ObjectMapper json;
+
+    @BeforeEach
+    void deactivate_existing_admins() {
+        List<User> activeAdmins = repo.findByDeletedAtIsNullOrderByCreatedAtDesc().stream()
+                .filter(user -> user.getRole() == Role.ADMIN)
+                .toList();
+        activeAdmins.forEach(User::deactivate);
+        repo.saveAllAndFlush(activeAdmins);
+    }
 
     private User admin(String email) {
         User u = User.createAdmin("Ad", "Min", email, encoder.encode("validpassword1"), "v1");
@@ -83,7 +96,6 @@ class AdminRulesIT extends AbstractIntegrationTest {
 
     @Test
     void the_platform_cannot_be_left_without_an_ADMIN() {
-        repo.deleteAll();
         User onlyAdmin = admin("only@utn.edu.ar");
         assertThatThrownBy(() -> users.deactivate(onlyAdmin.getId(), onlyAdmin.getId(),
                 confirmation("only@utn.edu.ar")))
@@ -241,7 +253,6 @@ class AdminRulesIT extends AbstractIntegrationTest {
      */
     @Test
     void two_CONCURRENT_deactivations_cannot_leave_zero_ADMIN_accounts() throws Exception {
-        repo.deleteAll();
         // EXACTLY TWO, and they deactivate each other. With four ADMINs -- two
         // targets plus two separate operators -- the count never reaches the
         // threshold, so both threads succeed and the test passes with the
@@ -290,7 +301,6 @@ class AdminRulesIT extends AbstractIntegrationTest {
 
     @Test
     void changing_the_last_ADMIN_role_is_also_blocked() {
-        repo.deleteAll();
         User onlyAdmin = admin("role@utn.edu.ar");
         assertThatThrownBy(() -> users.changeRole(onlyAdmin.getId(), onlyAdmin.getId(), Role.PROFESSOR))
                 .isInstanceOf(ApiException.class);

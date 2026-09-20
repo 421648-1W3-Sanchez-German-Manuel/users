@@ -109,7 +109,7 @@ public class GitProviderLinkService {
     public List<GitProviderLinkView> listActive(UUID userId) {
         requireActiveUser(userId);
         return links.findByUserIdAndDeletedAtIsNull(userId).stream()
-                .map(l -> new GitProviderLinkView(l.getProvider(), l.getUsername(), l.getLinkedAt()))
+                .map(l -> new GitProviderLinkView(l.getProvider(), l.getUsername(), l.getCreatedAt()))
                 .toList();
     }
 

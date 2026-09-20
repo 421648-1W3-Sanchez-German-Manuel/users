@@ -1,5 +1,7 @@
 package ar.edu.utn.frc.tup.p4.usersservice.users.entities;
 
+import ar.edu.utn.frc.tup.p4.usersservice.shared.audit.AuditedTable;
+import ar.edu.utn.frc.tup.p4.usersservice.shared.audit.BaseSoftDeletableEntity;
 import ar.edu.utn.frc.tup.p4.usersservice.users.enums.Role;
 import jakarta.persistence.*;
 import org.hibernate.annotations.JdbcTypeCode;
@@ -11,11 +13,8 @@ import java.util.UUID;
 
 @Entity
 @Table(name = "email_whitelist")
-public class EmailWhitelist {
-
-    @Id @Column(columnDefinition = "CHAR(36)")
-    @JdbcTypeCode(SqlTypes.CHAR)
-    private UUID id;
+@AuditedTable
+public class EmailWhitelist extends BaseSoftDeletableEntity {
 
     private String email;
     @Enumerated(EnumType.STRING)
@@ -24,25 +23,23 @@ public class EmailWhitelist {
     @Column(name = "added_by", columnDefinition = "CHAR(36)")
     @JdbcTypeCode(SqlTypes.CHAR)
     private UUID addedBy;
-    @Column(name = "created_at") private Instant createdAt;
-    @Column(name = "deleted_at") private Instant deletedAt;
 
     protected EmailWhitelist() { }
 
     public static EmailWhitelist create(String email, Role role, UUID addedBy) {
         EmailWhitelist w = new EmailWhitelist();
-        w.id = UUID.randomUUID();
+        w.setId(UUID.randomUUID());
         w.email = email.toLowerCase(Locale.ROOT);
         w.role = role;
         w.addedBy = addedBy;
-        w.createdAt = Instant.now();
+        Instant now = Instant.now();
+        w.setCreatedAt(now);
+        w.setUpdatedAt(now);
         return w;
     }
 
-    public void remove() { this.deletedAt = Instant.now(); }
+    public void remove() { setDeletedAt(Instant.now()); }
 
-    public UUID getId() { return id; }
     public String getEmail() { return email; }
     public Role getRole() { return role; }
-    public Instant getCreatedAt() { return createdAt; }
 }

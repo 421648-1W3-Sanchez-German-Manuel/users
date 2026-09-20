@@ -208,7 +208,7 @@ class GitProviderLinkServiceTest {
                 .satisfies(v -> {
                     assertThat(v.provider()).isEqualTo(GitProvider.GITHUB);
                     assertThat(v.username()).isEqualTo("octocat");
-                    assertThat(v.linkedAt()).isEqualTo(link.getLinkedAt());
+                    assertThat(v.linkedAt()).isEqualTo(link.getCreatedAt());
                 });
     }
 

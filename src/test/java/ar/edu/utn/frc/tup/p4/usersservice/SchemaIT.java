@@ -18,7 +18,43 @@ class SchemaIT extends AbstractIntegrationTest {
                 "SELECT table_name FROM information_schema.tables WHERE table_schema = DATABASE()",
                 String.class);
         assertThat(tablas).contains("users", "email_whitelist", "service_clients",
-                "service_client_scopes", "processed_events", "whitelist_requests", "outbox_events");
+                "service_client_scopes", "processed_events", "whitelist_requests", "outbox_events",
+                "user_git_provider_links",
+                "users_audit", "email_whitelist_audit", "service_clients_audit",
+                "whitelist_requests_audit", "user_git_provider_links_audit");
+    }
+
+    @Test
+    void audit_tables_exclude_secrets_and_generated_columns() {
+        List<String> forbiddenColumns = jdbc.queryForList(
+                "SELECT CONCAT(table_name,'.',column_name) FROM information_schema.columns "
+                        + "WHERE table_schema = DATABASE() AND table_name LIKE '%\\_audit' "
+                        + "AND column_name IN ('password_hash', 'secret_hash', 'active_email', "
+                        + "'active_client_id', 'pending_email')",
+                String.class);
+        assertThat(forbiddenColumns).isEmpty();
+    }
+
+    @Test
+    void audited_tables_include_service_actor_and_trace_columns() {
+        for (String table : List.of(
+                "users", "email_whitelist", "service_clients", "whitelist_requests",
+                "user_git_provider_links",
+                "users_audit", "email_whitelist_audit", "service_clients_audit",
+                "whitelist_requests_audit", "user_git_provider_links_audit")) {
+            List<String> columns = jdbc.queryForList(
+                    "SELECT column_name FROM information_schema.columns "
+                            + "WHERE table_schema = DATABASE() AND table_name = ?",
+                    String.class,
+                    table);
+            assertThat(columns)
+                    .as("service actor and trace columns in %s", table)
+                    .contains(
+                            "created_service",
+                            "last_updated_service",
+                            "created_trace_id",
+                            "last_updated_trace_id");
+        }
     }
 
     @Test
