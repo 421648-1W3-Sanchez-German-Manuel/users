@@ -5,10 +5,13 @@ import ar.edu.utn.frc.tup.p4.usersservice.auth.entities.ServiceClient;
 import ar.edu.utn.frc.tup.p4.usersservice.auth.repositories.ServiceClientRepository;
 import ar.edu.utn.frc.tup.p4.usersservice.shared.security.GatewayPrincipal;
 import ar.edu.utn.frc.tup.p4.usersservice.users.entities.EmailWhitelist;
+import ar.edu.utn.frc.tup.p4.usersservice.users.entities.GitProviderLink;
 import ar.edu.utn.frc.tup.p4.usersservice.users.entities.User;
 import ar.edu.utn.frc.tup.p4.usersservice.users.entities.WhitelistRequest;
+import ar.edu.utn.frc.tup.p4.usersservice.users.enums.GitProvider;
 import ar.edu.utn.frc.tup.p4.usersservice.users.enums.Role;
 import ar.edu.utn.frc.tup.p4.usersservice.users.repositories.EmailWhitelistRepository;
+import ar.edu.utn.frc.tup.p4.usersservice.users.repositories.GitProviderLinkRepository;
 import ar.edu.utn.frc.tup.p4.usersservice.users.repositories.UserRepository;
 import ar.edu.utn.frc.tup.p4.usersservice.users.repositories.WhitelistRequestRepository;
 import org.hibernate.HibernateException;
@@ -35,6 +38,7 @@ class AuditIT extends AbstractIntegrationTest {
     @Autowired EmailWhitelistRepository whitelist;
     @Autowired ServiceClientRepository serviceClients;
     @Autowired WhitelistRequestRepository whitelistRequests;
+    @Autowired GitProviderLinkRepository gitLinks;
     @Autowired PasswordEncoder passwordEncoder;
     @Autowired JdbcTemplate jdbc;
     @Autowired TransactionTemplate transactions;
@@ -198,6 +202,30 @@ class AuditIT extends AbstractIntegrationTest {
                         "Physical deletion is forbidden for audited entity "
                                 + User.class.getName());
         assertThat(users.findById(user.getId())).isPresent();
+    }
+
+    @Test
+    void git_provider_link_updates_archive_the_previous_state() {
+        UUID actor = UUID.randomUUID();
+        authenticate(new GatewayPrincipal("user", actor, null));
+        GitProviderLink link = gitLinks.saveAndFlush(GitProviderLink.create(
+                UUID.randomUUID(), GitProvider.GITHUB, "ext-" + UUID.randomUUID(), "octocat"));
+
+        transactions.executeWithoutResult(status -> {
+            GitProviderLink managed = gitLinks.findById(link.getId()).orElseThrow();
+            managed.softDelete();
+            gitLinks.saveAndFlush(managed);
+        });
+
+        assertThat(auditCount("user_git_provider_links_audit", link.getId())).isEqualTo(1);
+        assertThat(jdbc.queryForObject(
+                "SELECT deleted_at IS NULL FROM user_git_provider_links_audit WHERE id = ?",
+                Boolean.class,
+                link.getId().toString())).isTrue();
+        assertThat(jdbc.queryForObject(
+                "SELECT username FROM user_git_provider_links_audit WHERE id = ?",
+                String.class,
+                link.getId().toString())).isEqualTo("octocat");
     }
 
     private User newUser(Role role) {
