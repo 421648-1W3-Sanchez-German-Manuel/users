@@ -120,6 +120,12 @@ users:
     secret-hash: ${ADMIN_BREAKGLASS_SECRET_HASH:}
   legal:
     terms-version: "v1"          # DEC-31
+  # SPEC §16.1 - the domain an e-mail must belong to in order to self-register.
+  # A launch parameter, not a constant (the deployment decides it) and a LIST,
+  # so a second institutional domain needs no code change. Today only the
+  # student path enforces it; PROFESSOR/GESTOR still go through the whitelist.
+  registration:
+    allowed-domains: ${REGISTRATION_ALLOWED_DOMAINS:frc.utn.edu.ar}
   # Set-Cookie de sesion (fu_at/fu_rt). Default true: cualquier despliegue con
   # TLS real tiene que quedarse en true. Solo el docker-compose de este
   # proyecto lo pisa a false via env, porque no termina TLS en ningun lado
