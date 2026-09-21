@@ -1,5 +1,7 @@
 package ar.edu.utn.frc.tup.p4.usersservice.users.entities;
 
+import ar.edu.utn.frc.tup.p4.usersservice.shared.audit.AuditedTable;
+import ar.edu.utn.frc.tup.p4.usersservice.shared.audit.BaseAuditableEntity;
 import ar.edu.utn.frc.tup.p4.usersservice.users.enums.RequestStatus;
 import jakarta.persistence.*;
 import org.hibernate.annotations.JdbcTypeCode;
@@ -12,11 +14,8 @@ import java.util.UUID;
 /** DEC-29 - a PROFESSOR's request to add an e-mail to the whitelist. */
 @Entity
 @Table(name = "whitelist_requests")
-public class WhitelistRequest {
-
-    @Id @Column(columnDefinition = "CHAR(36)")
-    @JdbcTypeCode(SqlTypes.CHAR)
-    private UUID id;
+@AuditedTable
+public class WhitelistRequest extends BaseAuditableEntity {
 
     @Column(name = "requested_email") private String requestedEmail;
     @Column(name = "requested_by", columnDefinition = "CHAR(36)")
@@ -33,19 +32,20 @@ public class WhitelistRequest {
     @JdbcTypeCode(SqlTypes.CHAR)
     private UUID resolvedBy;
     @Column(name = "rejection_reason") private String rejectionReason;
-    @Column(name = "created_at")  private Instant createdAt;
     @Column(name = "resolved_at") private Instant resolvedAt;
 
     protected WhitelistRequest() { }
 
     public static WhitelistRequest create(String email, UUID requestedBy, String reason) {
         WhitelistRequest r = new WhitelistRequest();
-        r.id = UUID.randomUUID();
+        r.setId(UUID.randomUUID());
         r.requestedEmail = email.toLowerCase(Locale.ROOT);
         r.requestedBy = requestedBy;
         r.reason = reason;
         r.status = RequestStatus.PENDING;
-        r.createdAt = Instant.now();
+        Instant now = Instant.now();
+        r.setCreatedAt(now);
+        r.setUpdatedAt(now);
         return r;
     }
 
@@ -73,11 +73,9 @@ public class WhitelistRequest {
         }
     }
 
-    public UUID getId() { return id; }
     public String getRequestedEmail() { return requestedEmail; }
     public UUID getRequestedBy() { return requestedBy; }
     public String getReason() { return reason; }
     public RequestStatus getStatus() { return status; }
     public String getRejectionReason() { return rejectionReason; }
-    public Instant getCreatedAt() { return createdAt; }
 }

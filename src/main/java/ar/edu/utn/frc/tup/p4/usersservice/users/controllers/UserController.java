@@ -51,27 +51,25 @@ public class UserController {
     }
 
     /**
-     * This is the EXIT from the onboarding gate, so it is exempt from both
-     * fine-grained gates (rule 4). Without the ONBOARDING exemption, the gate
-     * it resolves would intercept the route and the account could never leave;
-     * without the PASSWORD exemption, the initial ADMIN, which starts with
-     * both conditions pending, would be locked out.
+     * Exit of the onboarding tour step. Exempt from both fine-grained gates
+     * (non-negotiable 4). With GitHub enabled this alone does NOT clear
+     * first_login — that needs a successful link (DEC-GL-14).
      */
-    @Operation(summary = "Completes onboarding",
+    @Operation(summary = "Confirms the guided tour",
                description = """
-                        This is the EXIT from the onboarding gate, so it is exempt from both
-                        fine-grained gates. Without the ONBOARDING exemption, the gate it resolves
-                        would intercept the route and the account could never leave; without the
-                        PASSWORD exemption, the initial ADMIN, which starts with both conditions
-                        pending, would be locked out.
+                        Marks the guided tour as completed. Exempt from both fine-grained gates
+                        (PASSWORD and ONBOARDING). With GitHub linking enabled this does NOT clear
+                        `firstLogin` by itself — a successful provider link is also required
+                        (DEC-GL-14). When GitHub is disabled, the tour alone is enough (DEC-GL-05).
 
-                        `avatarRef` is OPTIONAL.""")
-    @ApiResponse(responseCode = "200", description = "Onboarding complete. The gate no longer blocks access.")
+                        Body: `{ "tourOk": true }` only. Username and avatar are no longer accepted
+                        (DEC-GL-11, DEC-GL-21).""")
+    @ApiResponse(responseCode = "200", description = "Tour recorded. The onboarding gate may still block until GitHub is linked.")
     @SkipAccountGate({SkipAccountGate.Gate.PASSWORD, SkipAccountGate.Gate.ONBOARDING})
     @PatchMapping("/me/onboarding")
     public void onboarding(@AuthenticationPrincipal GatewayPrincipal p,
                            @Valid @RequestBody OnboardingRequest r) {
-        users.completeOnboarding(p.id(), r.githubUsername(), r.avatarRef(), r.tourOk());
+        users.completeOnboarding(p.id(), r.tourOk());
     }
 
     @Operation(summary = "Another person's public profile",
@@ -80,8 +78,21 @@ public class UserController {
                         **Does NOT include email, legajo, or account status**; use `/me` for that,
                         which returns the current user's OWN account.""")
     @ApiResponse(responseCode = "200", description = "Public profile.")
+    @ApiResponse(responseCode = "403", description = """
+            `type`: `access-denied`. A service token without the `users.profile.read` scope.""")
     @ApiResponse(responseCode = "404", description = "`type`: `route-not-found`.")
     @GetMapping("/profile/{id}")
+    // A person: any classmate, which is what this endpoint is for. A SERVICE:
+    // only with the scope the token was issued for.
+    //
+    // Until now nothing checked the scope anywhere in this service — it was
+    // validated on issue, signed, propagated as X-Service-Scopes and turned
+    // into a GrantedAuthority by GatewayIdentityFilter, and then never read.
+    // It happened to be harmless only because ScopeCatalog has a single
+    // issuable scope, so every service token carried exactly this one. The day
+    // a second one exists, a token issued for `cursos.*` would walk into this
+    // endpoint unless somebody had added this line first.
+    @PreAuthorize("principal.isPerson() or hasAuthority('users.profile.read')")
     public ProfileResponse profile(@PathVariable UUID id) {
         return users.profile(id);
     }

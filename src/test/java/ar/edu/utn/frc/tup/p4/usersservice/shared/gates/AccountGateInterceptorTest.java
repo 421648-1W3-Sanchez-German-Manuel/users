@@ -61,7 +61,10 @@ class AccountGateInterceptorTest {
         User u = User.create("Ana", "P", "a@utn.edu.ar", "$2a$12$h", Role.STUDENT, "v1");
         u.forceStatusForTest(status);
         if (mustChangePassword) u.requirePasswordChange();
-        if (!firstLogin) u.completeOnboarding("ana", null, true);
+        if (!firstLogin) {
+            u.completeOnboarding(true);
+            u.clearFirstLogin();
+        }
         return u;
     }
 

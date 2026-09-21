@@ -1,11 +1,12 @@
 package ar.edu.utn.frc.tup.p4.usersservice.users.entities;
 
+import ar.edu.utn.frc.tup.p4.usersservice.shared.audit.AuditExclude;
+import ar.edu.utn.frc.tup.p4.usersservice.shared.audit.AuditedTable;
+import ar.edu.utn.frc.tup.p4.usersservice.shared.audit.BaseSoftDeletableEntity;
 import ar.edu.utn.frc.tup.p4.usersservice.users.InvalidTransitionException;
 import ar.edu.utn.frc.tup.p4.usersservice.users.enums.AccountStatus;
 import ar.edu.utn.frc.tup.p4.usersservice.users.enums.Role;
 import jakarta.persistence.*;
-import org.hibernate.annotations.JdbcTypeCode;
-import org.hibernate.type.SqlTypes;
 
 import java.time.Instant;
 import java.util.*;
@@ -14,7 +15,8 @@ import static ar.edu.utn.frc.tup.p4.usersservice.users.enums.AccountStatus.*;
 
 @Entity
 @Table(name = "users")
-public class User {
+@AuditedTable
+public class User extends BaseSoftDeletableEntity {
 
     /** DEC-21 - DoD criterion #22. */
     private static final Map<AccountStatus, Set<AccountStatus>> VALID_TRANSITIONS = Map.of(
@@ -23,11 +25,6 @@ public class User {
             ACTIVE,          EnumSet.of(DEACTIVATED),
             DEACTIVATED,            EnumSet.noneOf(AccountStatus.class));
 
-    @Id
-    @Column(columnDefinition = "CHAR(36)")      // DEC-20 rule 1
-    @JdbcTypeCode(SqlTypes.CHAR)                // Bind as CHAR(36) rather than bytes: the column is utf8mb4
-    private UUID id;
-
     @Column(name = "first_names")
 private String firstNames;
     @Column(name = "last_names")
@@ -35,6 +32,7 @@ private String lastNames;
     private String legajo;
     private String email;
 
+    @AuditExclude
     @Column(name = "password_hash")
     private String passwordHash;
 
@@ -54,16 +52,12 @@ private Role role;
     @Column(name = "guided_tour_completed") private boolean guidedTourCompleted;
     @Column(name = "terms_version_accepted")  private String  acceptedTermsVersion;
     @Column(name = "terms_accepted_at")       private Instant termsAcceptedAt;
-    @Column(name = "created_at")            private Instant createdAt;
-    @Column(name = "updated_at")            private Instant updatedAt;
-    @Column(name = "deleted_at")            private Instant deletedAt;
-
     protected User() { }   // JPA
 
     public static User create(String firstNames, String lastNames, String email,
                              String passwordHash, Role role, String termsVersion) {
         User u = new User();
-        u.id = UUID.randomUUID();
+        u.setId(UUID.randomUUID());
         u.firstNames = firstNames;
         u.lastNames = lastNames;
         u.email = email.toLowerCase(Locale.ROOT);   // DEC-20 rule 4
@@ -73,8 +67,9 @@ private Role role;
         u.firstLogin = true;
         u.acceptedTermsVersion = termsVersion;
         u.termsAcceptedAt = Instant.now();
-        u.createdAt = Instant.now();
-        u.updatedAt = u.createdAt;
+        Instant now = Instant.now();
+        u.setCreatedAt(now);
+        u.setUpdatedAt(now);
         return u;
     }
 
@@ -93,7 +88,7 @@ private Role role;
             throw new InvalidTransitionException(this.accountStatus, target);
         }
         this.accountStatus = target;
-        this.updatedAt = Instant.now();
+        setUpdatedAt(Instant.now());
     }
 
     /** PENDING_EMAIL -> ACTIVE (PROFESSOR/ADMIN) or -> PENDING_COURSE (STUDENT). */
@@ -110,31 +105,49 @@ private Role role;
 
     public void deactivate() {
         transitionTo(DEACTIVATED);
-        this.deletedAt = Instant.now();
+        setDeletedAt(Instant.now());
     }
 
-    /** DEC-30: avatarRef is OPTIONAL while object storage is out of this sprint. */
-    public void completeOnboarding(String githubUsername, String avatarRef, boolean tourOk) {
-        this.githubUsername = githubUsername;
-        this.avatarRef = avatarRef;
+    /**
+     * DEC-GL-11: marks the guided tour only. Does NOT clear first_login —
+     * that is closeOnboardingIfReady() (DEC-GL-14). avatarRef / githubUsername
+     * no longer travel in the onboarding body (DEC-GL-21).
+     */
+    public void completeOnboarding(boolean tourOk) {
         this.guidedTourCompleted = tourOk;
+        setUpdatedAt(Instant.now());
+    }
+
+    /** DEC-GL-14: only path that clears first_login (via closeOnboardingIfReady). */
+    public void clearFirstLogin() {
         this.firstLogin = false;
-        this.updatedAt = Instant.now();
+        setUpdatedAt(Instant.now());
+    }
+
+    /** DEC-GL-11: mirror of the verified provider login. */
+    public void mirrorGithubUsername(String username) {
+        this.githubUsername = username;
+        setUpdatedAt(Instant.now());
+    }
+
+    /** DEC-GL-13 / DEC-GL-15: unlink must clear the mirror so GET /me stays honest. */
+    public void clearGithubUsername() {
+        this.githubUsername = null;
+        setUpdatedAt(Instant.now());
     }
 
     public void changePassword(String newHash) {
         this.passwordHash = newHash;
         this.mustChangePassword = false;
-        this.updatedAt = Instant.now();
+        setUpdatedAt(Instant.now());
     }
 
     public void requirePasswordChange() { this.mustChangePassword = true; }
-    public void changeRole(Role newRole) { this.role = newRole; this.updatedAt = Instant.now(); }
+    public void changeRole(Role newRole) { this.role = newRole; setUpdatedAt(Instant.now()); }
 
     /** Test-only: builds a User in an arbitrary state, bypassing the transition table. */
     public void forceStatusForTest(AccountStatus status) { this.accountStatus = status; }
 
-    public UUID getId() { return id; }
     public String getFirstNames() { return firstNames; }
     public String getLastNames() { return lastNames; }
     public String getLegajo() { return legajo; }
@@ -149,8 +162,6 @@ private Role role;
     public String getAvatarRef() { return avatarRef; }
     public boolean isFirstLogin() { return firstLogin; }
     public boolean isGuidedTourCompleted() { return guidedTourCompleted; }
-    public Instant getDeletedAt() { return deletedAt; }
-    public Instant getCreatedAt() { return createdAt; }
     public Instant getTermsAcceptedAt() { return termsAcceptedAt; }
     public String getAcceptedTermsVersion() { return acceptedTermsVersion; }
 }

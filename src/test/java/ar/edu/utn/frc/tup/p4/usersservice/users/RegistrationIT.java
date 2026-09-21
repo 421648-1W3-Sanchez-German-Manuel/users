@@ -3,6 +3,7 @@ package ar.edu.utn.frc.tup.p4.usersservice.users;
 import ar.edu.utn.frc.tup.p4.usersservice.AbstractIntegrationTest;
 import ar.edu.utn.frc.tup.p4.usersservice.shared.events.OutboxRepository;
 import ar.edu.utn.frc.tup.p4.usersservice.shared.web.ApiException;
+import ar.edu.utn.frc.tup.p4.usersservice.shared.web.ErrorTypes;
 import ar.edu.utn.frc.tup.p4.usersservice.users.entities.EmailWhitelist;
 import ar.edu.utn.frc.tup.p4.usersservice.users.enums.AccountStatus;
 import ar.edu.utn.frc.tup.p4.usersservice.users.enums.Role;
@@ -179,6 +180,20 @@ class RegistrationIT extends AbstractIntegrationTest {
                 "validpassword1", "PROG4-2026-A1", "v1"))
                 .isInstanceOf(ApiException.class)
                 .satisfies(ex -> assertThat(((ApiException) ex).getStatus()).isEqualTo(HttpStatus.CONFLICT));
+    }
+
+    @Test
+    void a_student_with_a_non_institutional_domain_is_rejected() {
+        // The test profile allows utn.edu.ar; gmail.com is outside it.
+        String email = "outsider-" + UUID.randomUUID() + "@gmail.com";
+
+        assertThatThrownBy(() -> registration.registerStudent("Ana", "Perez", "76543", email,
+                "validpassword1", "PROG4-2026-A1", "v1"))
+                .isInstanceOf(ApiException.class)
+                .hasFieldOrPropertyWithValue("type", ErrorTypes.EMAIL_NOT_WHITELISTED)
+                .satisfies(ex -> assertThat(((ApiException) ex).getStatus()).isEqualTo(HttpStatus.FORBIDDEN));
+
+        assertThat(repo.findByEmailAndDeletedAtIsNull(email)).isEmpty();
     }
 
     @Test

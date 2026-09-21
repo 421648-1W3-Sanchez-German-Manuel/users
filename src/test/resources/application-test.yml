@@ -39,6 +39,11 @@ users:
     enabled: false
   legal:
     terms-version: "v1"
+  # The fixtures register students with @utn.edu.ar. Overriding the domain here
+  # (rather than hardcoding it in the tests) is what lets a test assert rejection
+  # with a foreign domain, and shows the value is configuration, not a constant.
+  registration:
+    allowed-domains: utn.edu.ar
   jwt:
     issuer: users-service
     access-ttl: PT10M
@@ -58,6 +63,8 @@ users:
     reset-window: PT15M
     twofactor-max-challenges: 5
     twofactor-window: PT15M
+    activation-max-requests: 3
+    activation-window: PT15M
   kafka:
     topics:
       user-events: user-events

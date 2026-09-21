@@ -45,5 +45,14 @@ public final class ErrorTypes {
     /** DEC-24: the SAME type the gateway uses for its per-IP limit. */
     public static final URI TOO_MANY_ATTEMPTS      = URI.create(BASE + "too-many-attempts");
 
+    /** Git-provider linking (§6 of SPEC-git-provider-linking). */
+    public static final URI PROVIDER_NOT_SUPPORTED   = URI.create(BASE + "provider-not-supported");
+    public static final URI INVALID_LINK_STATE       = URI.create(BASE + "invalid-link-state");
+    public static final URI LINK_USER_MISMATCH       = URI.create(BASE + "link-user-mismatch");
+    public static final URI PROVIDER_ALREADY_LINKED  = URI.create(BASE + "provider-already-linked");
+    public static final URI PROVIDER_ACCOUNT_TAKEN   = URI.create(BASE + "provider-account-taken");
+    public static final URI PROVIDER_NOT_LINKED      = URI.create(BASE + "provider-not-linked");
+    public static final URI PROVIDER_UNAVAILABLE     = URI.create(BASE + "provider-unavailable");
+
     private ErrorTypes() { }
 }

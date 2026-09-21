@@ -9,7 +9,6 @@ import ar.edu.utn.frc.tup.p4.usersservice.users.dto.*;
 import ar.edu.utn.frc.tup.p4.usersservice.users.entities.User;
 import ar.edu.utn.frc.tup.p4.usersservice.users.enums.Role;
 import ar.edu.utn.frc.tup.p4.usersservice.users.repositories.UserRepository;
-import ar.edu.utn.frc.tup.p4.usersservice.users.services.CredentialService;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -30,12 +29,14 @@ public class UserService {
     private final AccountEventPublisher events;
     private final KafkaTopicsProperties topics;
     private final String currentTermsVersion;
+    private final GitProviderLinkService gitLinks;
 
     public UserService(UserRepository repo, CredentialService credentials,
                        PasswordEncoder encoder, EphemeralTokenService ephemeral,
                        AccountEventPublisher events,
                        KafkaTopicsProperties topics,
-                       @Value("${users.legal.terms-version}") String currentTermsVersion) {
+                       @Value("${users.legal.terms-version}") String currentTermsVersion,
+                       GitProviderLinkService gitLinks) {
         this.repo = repo;
         this.credentials = credentials;
         this.encoder = encoder;
@@ -43,6 +44,7 @@ public class UserService {
         this.events = events;
         this.topics = topics;
         this.currentTermsVersion = currentTermsVersion;
+        this.gitLinks = gitLinks;
     }
 
     /**
@@ -95,11 +97,15 @@ public class UserService {
                 .toList();
     }
 
-    /** DEC-30 - avatarRef may be null while object storage is out of this sprint. */
+    /**
+     * DEC-GL-11: marks the guided tour only. first_login is cleared by
+     * closeOnboardingIfReady (DEC-GL-14) when the account is ready.
+     */
     @Transactional
-    public void completeOnboarding(UUID id, String githubUsername, String avatarRef, boolean tourOk) {
+    public void completeOnboarding(UUID id, boolean tourOk) {
         User u = find(id);
-        u.completeOnboarding(githubUsername, avatarRef, tourOk);
+        u.completeOnboarding(tourOk);
+        gitLinks.closeOnboardingIfReady(u);
         repo.save(u);
     }
 
@@ -191,6 +197,9 @@ public class UserService {
         }
 
         ephemeral.verifySecondFactor(actorId, req.twoFactorCode());
+
+        // DEC-GL-17: free the provider accounts before the row is deactivated.
+        gitLinks.unlinkAllActive(targetId);
 
         target.deactivate();
         repo.save(target);

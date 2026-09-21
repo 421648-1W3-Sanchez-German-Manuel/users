@@ -2,6 +2,7 @@ package ar.edu.utn.frc.tup.p4.usersservice.users;
 
 import ar.edu.utn.frc.tup.p4.usersservice.AbstractIntegrationTest;
 import ar.edu.utn.frc.tup.p4.usersservice.shared.web.ApiException;
+import ar.edu.utn.frc.tup.p4.usersservice.shared.web.ErrorTypes;
 import ar.edu.utn.frc.tup.p4.usersservice.users.enums.AccountStatus;
 import ar.edu.utn.frc.tup.p4.usersservice.users.repositories.UserRepository;
 import ar.edu.utn.frc.tup.p4.usersservice.users.services.RegistrationService;
@@ -32,6 +33,51 @@ class ActivationLinkIT extends AbstractIntegrationTest {
 
     private AccountStatus statusOf(String email) {
         return repo.findByEmailAndDeletedAtIsNull(email).orElseThrow().getAccountStatus();
+    }
+
+    /**
+     * /resend-activation is PUBLIC and sends mail, exactly like
+     * /password/reset — and only the second one had a budget. The gateway's
+     * per-IP bucket is not a substitute: it protects the SERVICE from a flood,
+     * not a MAILBOX from being targeted, because the attacker changes IP and
+     * keeps going against the same address. Every request also appends a row
+     * to outbox_events.
+     *
+     * Counted per e-mail, over ATTEMPTS: there is no successful outcome that
+     * could clear the budget, since the response is constant by design.
+     */
+    @Test
+    void resend_activation_is_capped_per_email() {
+        String email = "resend-" + java.util.UUID.randomUUID() + "@utn.edu.ar";
+        registerStudent(email);
+
+        // activation-max-requests = 3 in the test profile.
+        for (int i = 0; i < 3; i++) {
+            registration.resendActivation(email);
+        }
+
+        assertThatThrownBy(() -> registration.resendActivation(email))
+                .isInstanceOf(ApiException.class)
+                .hasFieldOrPropertyWithValue("type", ErrorTypes.TOO_MANY_ATTEMPTS);
+    }
+
+    /**
+     * The budget is counted against the address AS GIVEN, so an unknown one
+     * burns it too. Otherwise only registered addresses would ever hit the
+     * limit, and hitting it would answer the question the constant response
+     * exists to refuse.
+     */
+    @Test
+    void the_cap_also_applies_to_an_address_that_does_not_exist() {
+        String unknown = "nobody-" + java.util.UUID.randomUUID() + "@utn.edu.ar";
+
+        for (int i = 0; i < 3; i++) {
+            assertThat(registration.resendActivation(unknown)).isNotBlank();
+        }
+
+        assertThatThrownBy(() -> registration.resendActivation(unknown))
+                .isInstanceOf(ApiException.class)
+                .hasFieldOrPropertyWithValue("type", ErrorTypes.TOO_MANY_ATTEMPTS);
     }
 
     @Test
