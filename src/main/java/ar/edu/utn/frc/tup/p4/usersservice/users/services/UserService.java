@@ -13,6 +13,8 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.util.List;
 import java.util.Locale;
@@ -211,7 +213,13 @@ public class UserService {
         // (10 min), because the gateway's AccountStateGuard reads `est` FROM THE
         // TOKEN, not from this table. It also kills the refresh: AuthService
         // step 3 rejects a refresh whose session no longer exists.
-        ephemeral.deleteSession(targetId);
+        //
+        // Run after commit, not here: a concurrent login between this line and
+        // the commit could still read the pre-deactivation row, issue a session,
+        // and never see it revoked. Deleting after commit closes that window —
+        // any session created before the commit is gone once it lands, and any
+        // login after the commit already sees the deactivated row.
+        deleteSessionAfterCommit(targetId);
 
         events.publish(topics.userEvents(), targetId.toString(), "ACCOUNT-DEACTIVATED", 1,
                 "user", targetId,
@@ -249,7 +257,33 @@ public class UserService {
         // request for up to a full access-ttl (10 min) after the demotion is
         // already committed here. This also forces a fresh login, so the next
         // token issued carries newRole instead of the stale one.
-        ephemeral.deleteSession(targetId);
+        //
+        // Deferred to after commit for the same reason as deactivate(): deleting
+        // it here, before newRole is durable, leaves a window where a concurrent
+        // login reads the still-committed old role and issues a fresh session
+        // that this call never sees.
+        deleteSessionAfterCommit(targetId);
+    }
+
+    /**
+     * Deletes {@code session:{userId}} once the enclosing transaction commits,
+     * instead of immediately. Both {@link #deactivate} and {@link #changeRole}
+     * change the row that {@code AccountStateGuard} would otherwise still read
+     * as authoritative if a login raced in before the commit; running the
+     * deletion after commit means every session in existence once this returns
+     * reflects the new state, not the one being replaced.
+     */
+    private void deleteSessionAfterCommit(UUID targetId) {
+        if (!TransactionSynchronizationManager.isSynchronizationActive()) {
+            ephemeral.deleteSession(targetId);
+            return;
+        }
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCommit() {
+                ephemeral.deleteSession(targetId);
+            }
+        });
     }
 
     /** RF-ROL-03 - this manual registration is for ADMIN only; see the DTO. */

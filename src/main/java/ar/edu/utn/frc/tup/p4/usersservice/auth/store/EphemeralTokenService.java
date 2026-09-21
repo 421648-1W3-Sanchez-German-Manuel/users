@@ -30,8 +30,9 @@ public interface EphemeralTokenService {
     void verifySecondFactor(UUID userId, String code);
 
     /**
-     * Deletes {@code userId}'s single session — DEC-22. Deactivation is one of
-     * the two deletions of {@code session:{userId}}; the other is logout.
+     * Deletes {@code userId}'s single session — DEC-22. Deactivation and role
+     * change are two of the deletions of {@code session:{userId}}; the other is
+     * logout.
      */
     void deleteSession(UUID userId);
 
