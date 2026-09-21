@@ -2,10 +2,7 @@ package ar.edu.utn.frc.tup.p4.usersservice.users.controllers;
 
 import ar.edu.utn.frc.tup.p4.usersservice.config.OpenApiConfig;
 import ar.edu.utn.frc.tup.p4.usersservice.shared.security.GatewayPrincipal;
-import ar.edu.utn.frc.tup.p4.usersservice.shared.web.ApiException;
 import ar.edu.utn.frc.tup.p4.usersservice.users.dto.*;
-import ar.edu.utn.frc.tup.p4.usersservice.users.entities.WhitelistRequest;
-import ar.edu.utn.frc.tup.p4.usersservice.users.enums.Role;
 import ar.edu.utn.frc.tup.p4.usersservice.users.services.WhitelistService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
@@ -44,31 +41,15 @@ public class WhitelistController {
     @PreAuthorize("hasAnyRole('ADMIN', 'GESTOR')")
     public Map<String, String> add(@AuthenticationPrincipal GatewayPrincipal p,
                                    @Valid @RequestBody AddEmailRequest r) {
-        Role role = null;
-        if (r.role() != null && !r.role().isBlank()) {
-            try {
-                role = Role.valueOf(r.role());
-            } catch (IllegalArgumentException e) {
-                throw ApiException.validation("Invalid role: '" + r.role() + "'. Must be PROFESSOR or GESTOR.");
-            }
-        }
-        return Map.of("id", whitelist.add(p.id(), r.email(), role).toString());
+        return Map.of("id", whitelist.add(p.id(), r.email(), r.role()).toString());
     }
 
     @Operation(summary = "Lists authorized emails (ADMIN/GESTOR)")
     @ApiResponse(responseCode = "200", description = "Each row contains `id`, `email`, `role`, and `createdAt`.")
     @GetMapping
     @PreAuthorize("hasAnyRole('ADMIN', 'GESTOR')")
-    public List<Map<String, String>> list() {
-        return whitelist.list().stream()
-                .map(e -> {
-                    Map<String, String> dto = new HashMap<>();
-                    dto.put("id", e.getId().toString());
-                    dto.put("email", e.getEmail());
-                    dto.put("role", e.getRole().name());
-                    if (e.getCreatedAt() != null) dto.put("createdAt", e.getCreatedAt().toString());
-                    return dto;
-                }).toList();
+    public List<WhitelistEntryResponse> list() {
+        return whitelist.list();
     }
 
     @Operation(summary = "Removes an email from the whitelist (ADMIN/GESTOR)",
@@ -106,20 +87,8 @@ public class WhitelistController {
             and `createdAt`.""")
     @GetMapping("/requests")
     @PreAuthorize("hasAnyRole('ADMIN', 'GESTOR')")
-    public List<Map<String, String>> listRequests() {
-        return whitelist.listRequests().stream().map(this::toDto).toList();
-    }
-
-    private Map<String, String> toDto(WhitelistRequest r) {
-        Map<String, String> dto = new HashMap<>();
-        dto.put("id", r.getId().toString());
-        dto.put("email", r.getRequestedEmail());
-        dto.put("requestedBy", r.getRequestedBy().toString());
-        dto.put("status", r.getStatus().name());
-        dto.put("reason", r.getReason() == null ? "" : r.getReason());
-        dto.put("rejectionReason", r.getRejectionReason() == null ? "" : r.getRejectionReason());
-        if (r.getCreatedAt() != null) dto.put("createdAt", r.getCreatedAt().toString());
-        return dto;
+    public List<WhitelistRequestResponse> listRequests() {
+        return whitelist.listRequests();
     }
 
     @Operation(summary = "Approves or rejects a request (ADMIN/GESTOR)",

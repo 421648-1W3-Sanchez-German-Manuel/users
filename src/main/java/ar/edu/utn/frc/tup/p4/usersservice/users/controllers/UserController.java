@@ -180,7 +180,11 @@ public class UserController {
 
                         A GESTOR can move PROFESSOR/GESTOR accounts only between those two roles:
                         it cannot modify an ADMIN account or grant ADMIN, and it cannot modify or
-                        create STUDENT accounts this way.""")
+                        create STUDENT accounts this way.
+
+                        On success the target's session is closed (`session:{userId}` is deleted,
+                        same as deactivation) so a token issued under the previous role stops being
+                        accepted and the next login carries the new one.""")
     @ApiResponse(responseCode = "200", description = "Role changed.")
     @ApiResponse(responseCode = "403", description = "`type`: `access-denied`. A GESTOR attempted to exceed the PROFESSOR/GESTOR scope.")
     @ApiResponse(responseCode = "409", description = "`type`: `last-admin`.")
