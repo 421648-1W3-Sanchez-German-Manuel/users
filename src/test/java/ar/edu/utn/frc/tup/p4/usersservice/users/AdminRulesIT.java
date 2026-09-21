@@ -375,6 +375,20 @@ class AdminRulesIT extends AbstractIntegrationTest {
     }
 
     @Test
+    void role_change_closes_the_session_of_the_target() {
+        User manager = withRole(Role.GESTOR, "role-session-manager@utn.edu.ar");
+        User target = withRole(Role.PROFESSOR, "role-session-target@utn.edu.ar");
+        tokens.saveSession(target.getId(), "sid-still-open", java.time.Duration.ofMinutes(10));
+
+        users.changeRole(manager.getId(), target.getId(), Role.GESTOR);
+
+        // Without this, a demoted ADMIN keeps the old ROLE_* on every request
+        // until the token expires: the gateway's AccountStateGuard reads the
+        // role from the token, not from this table.
+        assertThat(tokens.findSessionId(target.getId())).isEmpty();
+    }
+
+    @Test
     void a_GESTOR_list_does_not_include_ADMIN_or_STUDENT_accounts() {
         User manager = withRole(Role.GESTOR, "manager-list@utn.edu.ar");
         User otherManager = withRole(Role.GESTOR, "target-list-manager@utn.edu.ar");

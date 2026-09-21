@@ -242,6 +242,14 @@ public class UserService {
         }
         target.changeRole(newRole);
         repo.save(target);
+
+        // Same reasoning as deactivate() (DEC-22): the gateway's AccountStateGuard
+        // reads the role from the access token, not from this table. Without
+        // closing session:{userId} a demoted ADMIN keeps ROLE_ADMIN on every
+        // request for up to a full access-ttl (10 min) after the demotion is
+        // already committed here. This also forces a fresh login, so the next
+        // token issued carries newRole instead of the stale one.
+        ephemeral.deleteSession(targetId);
     }
 
     /** RF-ROL-03 - this manual registration is for ADMIN only; see the DTO. */

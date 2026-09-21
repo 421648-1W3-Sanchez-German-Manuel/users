@@ -3,6 +3,8 @@ package ar.edu.utn.frc.tup.p4.usersservice.users.services;
 import ar.edu.utn.frc.tup.p4.usersservice.shared.notifications.NotificationEventPublisher;
 import ar.edu.utn.frc.tup.p4.usersservice.shared.notifications.EmailType;
 import ar.edu.utn.frc.tup.p4.usersservice.shared.web.ApiException;
+import ar.edu.utn.frc.tup.p4.usersservice.users.dto.WhitelistEntryResponse;
+import ar.edu.utn.frc.tup.p4.usersservice.users.dto.WhitelistRequestResponse;
 import ar.edu.utn.frc.tup.p4.usersservice.users.entities.*;
 import ar.edu.utn.frc.tup.p4.usersservice.users.enums.RequestStatus;
 import ar.edu.utn.frc.tup.p4.usersservice.users.enums.Role;
@@ -27,9 +29,25 @@ public class WhitelistService {
         this.users = users; this.mails = mails;
     }
 
+    /**
+     * {@code rawRole} stays a raw string here, not the enum, for the same reason
+     * it stays raw in {@link ar.edu.utn.frc.tup.p4.usersservice.users.dto.AddEmailRequest}:
+     * an invalid enum value at the HTTP boundary would fail Jackson deserialization
+     * before Bean Validation runs, producing a generic 400 instead of this explicit
+     * message. Parsing and validating it here — not in the controller — means the
+     * PROFESSOR/GESTOR restriction is enforced for every caller of this use case,
+     * HTTP or not.
+     */
     @Transactional
-    public UUID add(UUID actor, String email, Role role) {
-        Role effectiveRole = role == null ? Role.PROFESSOR : role;
+    public UUID add(UUID actor, String email, String rawRole) {
+        Role effectiveRole = Role.PROFESSOR;
+        if (rawRole != null && !rawRole.isBlank()) {
+            try {
+                effectiveRole = Role.valueOf(rawRole);
+            } catch (IllegalArgumentException e) {
+                throw ApiException.validation("Invalid role: '" + rawRole + "'. Must be PROFESSOR or GESTOR.");
+            }
+        }
         if (effectiveRole != Role.PROFESSOR && effectiveRole != Role.GESTOR) {
             throw ApiException.validation("The whitelist accepts only PROFESSOR or GESTOR.");
         }
@@ -48,12 +66,23 @@ public class WhitelistService {
     }
 
     @Transactional(readOnly = true)
-    public List<EmailWhitelist> list() { return whitelist.findAllByDeletedAtIsNullOrderByCreatedAtDesc(); }
+    public List<WhitelistEntryResponse> list() {
+        return whitelist.findAllByDeletedAtIsNullOrderByCreatedAtDesc().stream()
+                .map(e -> new WhitelistEntryResponse(e.getId().toString(), e.getEmail(), e.getRole(),
+                        e.getCreatedAt()))
+                .toList();
+    }
 
     /** DEC-29 · the ADMIN's review queue, newest first. */
     @Transactional(readOnly = true)
-    public List<WhitelistRequest> listRequests() {
-        return requests.findAll(Sort.by(Sort.Direction.DESC, "createdAt"));
+    public List<WhitelistRequestResponse> listRequests() {
+        return requests.findAll(Sort.by(Sort.Direction.DESC, "createdAt")).stream()
+                .map(r -> new WhitelistRequestResponse(r.getId().toString(), r.getRequestedEmail(),
+                        r.getRequestedBy().toString(), r.getStatus(),
+                        r.getReason() == null ? "" : r.getReason(),
+                        r.getRejectionReason() == null ? "" : r.getRejectionReason(),
+                        r.getCreatedAt()))
+                .toList();
     }
 
     @Transactional
