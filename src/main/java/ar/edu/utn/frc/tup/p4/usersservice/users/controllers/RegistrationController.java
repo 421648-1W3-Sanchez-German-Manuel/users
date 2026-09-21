@@ -28,7 +28,8 @@ public class RegistrationController {
                         is called with the token from the link sent by email.""")
     @ApiResponse(responseCode = "200", description = "Registration accepted. The activation link is sent by email.")
     @ApiResponse(responseCode = "403", description = """
-            `type`: `email-not-whitelisted`. The email is not authorized for registration.""")
+            `type`: `email-not-whitelisted`. The email is not on the configured institutional
+            domain (`users.registration.allowed-domains`).""")
     @ApiResponse(responseCode = "409", description = """
             `type`: `duplicate-email`. An ACTIVE account with that email already exists.
             Uniqueness applies to active rows, not historical ones: nothing is physically
