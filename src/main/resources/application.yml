@@ -1,11 +1,19 @@
 spring:
   application:
     name: users-service
+  config:
+    # Files rendered by the Vault Agent (one file per secret, named after the
+    # property below). `optional:` so a run without Vault - the IDE - starts as
+    # it always did. To point elsewhere: SPRING_CONFIG_IMPORT=optional:configtree:./dir/
+    import: "optional:configtree:/run/secrets/config/"
   datasource:
     # DEC-20 rule 2: UTC explicit on the connection - never rely on the host's timezone
     url: ${DB_URL:jdbc:mysql://localhost:3306/users?connectionTimeZone=UTC&preserveInstants=true}
     username: ${DB_USER:root}
-    password: ${DB_PASSWORD:}
+    # File db-password (Vault). The DB_PASSWORD environment variable still works
+    # and, as always in Spring, WINS over the file - so it must not be set where
+    # Vault is the source.
+    password: ${db-password:${DB_PASSWORD:}}
   jpa:
     hibernate:
       ddl-auto: validate        # Flyway is in charge; Hibernate only verifies
@@ -104,7 +112,7 @@ users:
   bootstrap:
     enabled:     ${ADMIN_BOOTSTRAP_ENABLED:true}
     email:       ${ADMIN_BOOTSTRAP_EMAIL:admin@frc.utn.edu.ar}
-    password:    ${ADMIN_BOOTSTRAP_PASSWORD:}
+    password:    ${admin-bootstrap-password:${ADMIN_BOOTSTRAP_PASSWORD:}}
     first-names: ${ADMIN_BOOTSTRAP_FIRST_NAMES:Admin}
     last-names:  ${ADMIN_BOOTSTRAP_LAST_NAMES:Inicial}
   # RF-ROL-04 - break-glass. The BCrypt hash of the installation secret, never
