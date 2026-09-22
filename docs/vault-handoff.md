@@ -4,8 +4,11 @@
 and the contract live in `tpi-compose` (`docs/vault-contract.md`,
 `docs/vault-handoff.md`); this file covers what changed here.
 
-- PR: `feature/vault-secrets` (draft). Companion PR in `tpi-compose`: `feature/vault`.
-- Backward compatible: it can merge before the `tpi-compose` PR.
+- Merged to `main` (PR #26). Companion PR in `tpi-compose`: `feature/vault` (#10, also merged).
+- Backward compatible: no `DB_PASSWORD`/`ADMIN_BOOTSTRAP_PASSWORD` env vars means Config Tree is
+  the only source, but either one still overrides it, so an IDE run without Vault keeps working.
+- Deployed to the real platform server (see `tpi-compose/docs/vault-server-migration.md` for that
+  part): the initial admin logged in against a Config-Tree-sourced password issued by the real Vault.
 
 ## What changed
 
